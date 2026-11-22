@@ -78,14 +78,16 @@ Data turnamen dipasang otomatis pada database lama saat server dimulai. Format d
 
 Repository ini menyertakan hook `.githooks/post-commit`. Setiap commit akan otomatis melakukan `git push origin main`, dengan log di `.git/auto-push.log`.
 
-Aktifkan hook setelah clone di mesin baru:
+Hook aktif otomatis: `npm start` dan `npm run dev` menjalankan `setup-hooks.js`, yang mengisi `core.hooksPath=.githooks` bila belum disetel. Clone baru cukup dijalankan tanpa langkah tambahan.
+
+Aktivasi manual (opsional):
 
 ```bash
 git config core.hooksPath .githooks
 chmod +x .githooks/post-commit
 ```
 
-Jika tidak ingin push otomatis, kosongkan kembali dengan `git config --unset core.hooksPath`.
+Untuk mematikan push otomatis, arahkan ke folder hook bawaan yang kosong: `git config core.hooksPath .git/hooks`.
 
 ## Catatan keamanan
 

@@ -4,8 +4,8 @@
   "private": true,
   "description": "Platform live score, tim, pemain, dan mabar mini soccer.",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
+    "start": "node setup-hooks.js && node server.js",
+    "dev": "node setup-hooks.js && node --watch server.js",
     "reset": "node reset.js"
   },
   "engines": {
