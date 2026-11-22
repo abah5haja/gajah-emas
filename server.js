@@ -1271,6 +1271,8 @@ async function handleApi(req, res, url) {
     if (tournament.knockout && tournament.knockout.mode === 'auto') {
       throw new HttpError(409, 'Hapus fase gugur otomatis sebelum mengisi manual.');
     }
+    const groupMatches = db.matches.filter((match) => match.tournamentId === tournament.id && match.groupId);
+    if (!groupMatches.length) throw new HttpError(400, 'Buat jadwal fase grup terlebih dahulu sebelum mengisi fase gugur.');
     if (!Array.isArray(body.slots)) throw new HttpError(400, 'Data slot fase gugur tidak valid.');
     const inputById = new Map(body.slots.map((slot) => [text(slot.id, 20), slot]));
     const existing = tournament.knockout;

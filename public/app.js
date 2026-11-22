@@ -2374,8 +2374,8 @@ function renderAdminKnockoutPanel() {
           <span class="knockout-option-icon">${icon('admin')}</span>
           <h4>Manual</h4>
           <p>Isi sendiri nama tim dan jam pertandingan untuk seluruh babak, termasuk juara 3 dan final.</p>
-          <button type="button" class="btn btn-ghost btn-block btn-sm" data-action="open-manual-knockout">${icon('admin')} Isi manual</button>
-          <small>Bisa diisi bertahap sampai final dan juara 3.</small>
+          <button type="button" class="btn btn-ghost btn-block btn-sm" data-action="open-manual-knockout" ${groupMatches.length ? '' : 'disabled'}>${icon('admin')} Isi manual</button>
+          <small>${groupMatches.length ? 'Bisa diisi bertahap sampai final dan juara 3.' : 'Buat jadwal fase grup terlebih dahulu.'}</small>
         </div>
       </div>
     </div>`;
