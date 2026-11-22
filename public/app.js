@@ -166,7 +166,14 @@ function liveMinute(match) {
       minute += Math.floor((Date.now() + state.serverOffset - started) / MINUTE_MS);
     }
   }
-  return Math.max(0, Math.min(90, Math.floor(minute)));
+  return Math.max(0, Math.min(30, Math.floor(minute)));
+}
+
+function matchFormatText() {
+  const format = state.data && state.data.meta && state.data.meta.matchFormat;
+  return format && format.halves && format.minutesPerHalf
+    ? `${format.halves} × ${format.minutesPerHalf} menit`
+    : '2 × 15 menit';
 }
 
 function clockIsRunning(match) {
@@ -509,7 +516,7 @@ function tickClocks() {
   });
   document.querySelectorAll('[data-clock-bar]').forEach((element) => {
     const match = getMatch(element.dataset.clockBar);
-    if (match) element.style.width = `${Math.min(100, (liveMinute(match) / 90) * 100)}%`;
+    if (match) element.style.width = `${Math.min(100, (liveMinute(match) / 30) * 100)}%`;
   });
   document.querySelectorAll('[data-clock-state]').forEach((element) => {
     const match = getMatch(element.dataset.clockState);
@@ -576,7 +583,7 @@ function scoreboard(match, options = {}) {
       <div class="score-middle">
         <div class="score-numbers"><b>${score.home}</b><span>:</span><b>${score.away}</b></div>
         ${live
-          ? `<div class="clock-track"><span data-clock-bar="${esc(match.id)}" style="width:${Math.min(100, (liveMinute(match) / 90) * 100)}%"></span></div>`
+          ? `<div class="clock-track"><span data-clock-bar="${esc(match.id)}" style="width:${Math.min(100, (liveMinute(match) / 30) * 100)}%"></span></div>`
           : `<span class="score-caption">${match.status === 'finished' ? 'Full time' : formatKickoff(match.kickoff)}</span>`}
       </div>
       <div class="score-team is-away">
@@ -587,7 +594,7 @@ function scoreboard(match, options = {}) {
     </div>
     ${live && latest ? `<div class="score-highlight">${eventGlyph(latest.type)}<span><b>${esc(latest.playerName)}</b> ${eventVerb(latest.type)} · ${latest.minute}'</span></div>` : ''}
     <div class="scoreboard-foot">
-      <span>${icon('clock')}${formatKickoff(match.kickoff)}</span>
+      <span>${icon('clock')}${formatKickoff(match.kickoff)} · ${matchFormatText()}</span>
       <a href="/live" data-link class="text-link">Match center ${icon('arrow')}</a>
     </div>
   </article>`;
@@ -1024,7 +1031,7 @@ function renderTournamentGroup(group, tournament) {
     <td class="group-points">${row.points}</td>
   </tr>`).join('');
   if (emptySlots > 0) {
-    const canAssign = state.isAdmin && tournament.status !== 'finished' && !tournament.matchCount;
+    const canAssign = state.isAdmin && tournament.status !== 'finished' && !tournament.matchCount && !tournament.knockout;
     tableRows += Array.from({ length: emptySlots }, () => `<tr class="group-empty-row">
       <td>—</td>
       <td class="group-team-cell">${canAssign
@@ -1072,9 +1079,98 @@ function renderTournamentLeaderCard(title, entries, metric, iconClass, emptyText
   </div>`;
 }
 
+function bracketTeamRow(team, score, isWinner, isTbd) {
+  return `<div class="bracket-team ${isWinner ? 'is-winner' : ''} ${isTbd ? 'is-tbd' : ''}">
+    ${team ? crest(team, 'xs') : '<span class="bracket-tbd-crest">?</span>'}
+    <span>${esc(team ? team.name : 'TBD')}</span>
+    ${score != null ? `<b>${score}</b>` : ''}
+  </div>`;
+}
+
+function renderBracketMatch(slot) {
+  const match = slot.match;
+  const finished = match && match.status === 'finished';
+  const hasScore = match && (match.status === 'live' || match.status === 'finished');
+  const homeScore = hasScore ? match.homeScore : null;
+  const awayScore = hasScore ? match.awayScore : null;
+  const homeWinner = finished && homeScore > awayScore;
+  const awayWinner = finished && awayScore > homeScore;
+  return `<div class="bracket-match ${match && match.status === 'live' ? 'is-live' : ''} ${finished ? 'is-finished' : ''}">
+    <div class="bracket-match-head"><span>${esc(slot.label)}</span><span>${esc(formatTime(slot.kickoff))} WIB</span></div>
+    <div class="bracket-teams">
+      ${bracketTeamRow(slot.home, homeScore, homeWinner, !slot.home)}
+      ${bracketTeamRow(slot.away, awayScore, awayWinner, !slot.away)}
+    </div>
+    <div class="bracket-match-foot">
+      ${match
+        ? match.status === 'live'
+          ? `<span class="status-pill is-live"><span class="live-dot"></span>${match.minute}'</span>`
+          : match.status === 'finished'
+            ? '<span class="status-pill is-finished">FT</span>'
+            : `<span class="status-pill is-upcoming">${esc(formatDate(slot.kickoff))}</span>`
+        : `<span class="tiny-label">${esc(formatDate(slot.kickoff))}</span>`}
+    </div>
+  </div>`;
+}
+
+function renderTournamentKnockout(tournament) {
+  const knockout = tournament.knockout;
+  if (!knockout) {
+    return `<div class="knockout-empty-panel">${icon('trophy')}<div><span class="kicker">Fase gugur</span><h3>Bracket belum disusun</h3><p>Operator dapat mengisi 8 besar sampai final secara otomatis atau manual.</p></div></div>`;
+  }
+  const slots = knockout.slots || [];
+  const byStage = (stage) => slots.filter((slot) => slot.stage === stage);
+  const podium = knockout.podium || {};
+  return `<div class="knockout-section">
+    <div class="section-head knockout-heading">
+      <div><span class="kicker">Fase gugur</span><h2>Jalur menuju juara</h2></div>
+      <span class="tiny-label">8 Besar · Semifinal · Juara 3 · Final</span>
+    </div>
+    <div class="bracket-board">
+      <div class="bracket-round">
+        <div class="bracket-round-title"><span>01</span><div><b>8 Besar</b><small>4 pertandingan</small></div></div>
+        <div class="bracket-matches">${byStage('quarterfinal').map(renderBracketMatch).join('')}</div>
+      </div>
+      <div class="bracket-round">
+        <div class="bracket-round-title"><span>02</span><div><b>Semifinal</b><small>2 pertandingan</small></div></div>
+        <div class="bracket-matches">${byStage('semifinal').map(renderBracketMatch).join('')}</div>
+      </div>
+      <div class="bracket-round is-last">
+        <div class="bracket-round-title"><span>03</span><div><b>Final & Juara 3</b><small>2 pertandingan</small></div></div>
+        <div class="bracket-matches">${byStage('third').map(renderBracketMatch).join('')}${byStage('final').map(renderBracketMatch).join('')}</div>
+      </div>
+    </div>
+    ${(podium.champion || podium.runnerUp) ? `<div class="podium-card">
+      <div class="podium-head"><span class="kicker">Hasil akhir</span><h3>Podium turnamen</h3></div>
+      <div class="podium-grid">
+        <div class="podium-place is-champion">
+          <span class="podium-medal">${icon('trophy')}</span>
+          <span class="podium-label">Juara 1</span>
+          ${podium.champion ? `${crest(podium.champion, 'md')}<strong>${esc(podium.champion.name)}</strong>` : '<strong class="muted">TBD</strong>'}
+        </div>
+        <div class="podium-place">
+          <span class="podium-medal">2</span>
+          <span class="podium-label">Juara 2</span>
+          ${podium.runnerUp ? `${crest(podium.runnerUp, 'md')}<strong>${esc(podium.runnerUp.name)}</strong>` : '<strong class="muted">TBD</strong>'}
+        </div>
+        <div class="podium-place">
+          <span class="podium-medal">3</span>
+          <span class="podium-label">Juara 3</span>
+          ${podium.third ? `${crest(podium.third, 'md')}<strong>${esc(podium.third.name)}</strong>` : '<strong class="muted">TBD</strong>'}
+        </div>
+        <div class="podium-place">
+          <span class="podium-medal">4</span>
+          <span class="podium-label">Juara 4</span>
+          ${podium.fourth ? `${crest(podium.fourth, 'md')}<strong>${esc(podium.fourth.name)}</strong>` : '<strong class="muted">TBD</strong>'}
+        </div>
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+
 function renderTournamentFixtures(tournament) {
   const matches = state.data.matches
-    .filter((match) => match.tournamentId === tournament.id)
+    .filter((match) => match.tournamentId === tournament.id && match.groupId)
     .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
   return `<div class="panel tournament-schedule">
     <div class="panel-head">
@@ -1128,6 +1224,7 @@ function renderTournamentPage() {
           <span>${icon('calendar')}${esc(formatKickoff(tournament.startsAt))}</span>
           <span>${icon('pin')}${esc(tournament.venue)}</span>
           <span>${icon('users')}${tournament.slotsFilled}/${tournament.slotTotal} slot terisi</span>
+          <span>${icon('clock')}${matchFormatText()}</span>
         </div>
       </div>
       <div class="tournament-progress-card">
@@ -1160,6 +1257,8 @@ function renderTournamentPage() {
       </div>
       <div class="qualification-route"><b>${groupCount} × ${tournament.qualifyPerGroup}</b><span>${icon('arrow')}</span><b>${qualifiedTotal} tim</b></div>
     </div>
+
+    ${renderTournamentKnockout(tournament)}
 
     <div class="section-head tournament-stats-heading">
       <div><span class="kicker">Papan statistik</span><h2>Pencetak gol & kartu</h2></div>
@@ -1511,6 +1610,12 @@ function renderModal() {
     wide = true;
   } else if (type === 'group-team') {
     content = renderGroupTeamModal(payload.groupId);
+  } else if (type === 'match-schedule') {
+    content = renderMatchScheduleModal();
+    wide = true;
+  } else if (type === 'manual-knockout') {
+    content = renderManualKnockoutModal();
+    wide = true;
   }
 
   root.modal.innerHTML = content
@@ -1676,6 +1781,36 @@ function renderJoinModal(sessionId) {
   </form>`;
 }
 
+function renderMatchScheduleModal() {
+  const upcoming = state.data.matches
+    .filter((match) => match.status === 'upcoming')
+    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+  const available = upcoming.filter((match) => !match.inControl);
+  const dates = [...new Set(available.map((match) => isoDay(new Date(match.kickoff))))].sort();
+  return `<div class="modal-form match-schedule-modal">
+    <span class="kicker">Jadwal pertandingan</span>
+    <h2 id="modal-title">Tambah ke kontrol live</h2>
+    <p class="modal-lede">Pilih pertandingan dari jadwal. Hanya laga yang ditambahkan yang tampil di panel kontrol. Format ${matchFormatText()}.</p>
+    ${available.length ? `<div class="match-picker-list">
+      ${dates.map((date) => {
+        const matches = available.filter((match) => isoDay(new Date(match.kickoff)) === date);
+        return `<div class="match-picker-date">
+          <span class="match-picker-day">${date === todayIso() ? 'Hari ini' : esc(longDateFormatter.format(new Date(`${date}T12:00:00+07:00`)))}</span>
+          ${matches.map((match) => `<button type="button" class="match-pick-row" data-action="admin-add-control" data-match="${esc(match.id)}">
+            <span class="match-pick-time"><b>${esc(formatTime(match.kickoff))}</b><small>WIB</small></span>
+            <span class="match-pick-copy"><span class="match-pick-round">${esc(match.round)}${match.groupId ? ` · Grup ${esc(match.groupId)}` : ''}</span><span class="match-pick-teams">${crest(match.home, 'xs')}${esc(match.home.name)} <em>vs</em> ${esc(match.away.name)}${crest(match.away, 'xs')}</span></span>
+            <span class="match-pick-add">${icon('plus')} Tambah</span>
+          </button>`).join('')}
+        </div>`;
+      }).join('')}
+    </div>` : `<div class="match-picker-empty">${icon('calendar')}<div><strong>${upcoming.length ? 'Semua jadwal sudah masuk kontrol' : 'Belum ada jadwal'}</strong><p>${upcoming.length ? 'Tambahkan pertandingan baru dari tab Turnamen atau form Tambah pertandingan.' : 'Buat jadwal pertandingan terlebih dahulu.'}</p></div></div>`}
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-action="close-modal">Tutup</button>
+    </div>
+    <p class="form-hint">${available.length} laga tersedia · ${upcoming.length - available.length} laga sudah di kontrol.</p>
+  </div>`;
+}
+
 function renderGroupTeamModal(groupId) {
   const tournament = state.data.tournament;
   const group = tournament && (tournament.groups || []).find((item) => item.id === groupId);
@@ -1683,7 +1818,7 @@ function renderGroupTeamModal(groupId) {
   const assigned = new Set(tournament.groups.flatMap((item) => item.teamIds || []));
   const available = state.data.teams.filter((team) => !assigned.has(team.id));
   const remaining = Math.max(0, tournament.teamsPerGroup - (group.teamIds || []).length);
-  const locked = tournament.status === 'finished' || tournament.matchCount > 0;
+  const locked = tournament.status === 'finished' || tournament.matchCount > 0 || Boolean(tournament.knockout);
   return `<div class="modal-form group-picker-modal">
     <span class="kicker">Pembagian grup</span>
     <h2 id="modal-title">Pilih tim untuk Grup ${esc(group.id)}</h2>
@@ -1705,6 +1840,44 @@ function renderGroupTeamModal(groupId) {
     </div>
     <p class="form-hint">Tim yang dipilih langsung masuk ke grup dan tidak muncul lagi di daftar ini.</p>
   </div>`;
+}
+
+function defaultKnockoutKickoff(definition) {
+  const dayOffset = definition.stage === 'quarterfinal' ? 3 : definition.stage === 'semifinal' ? 4 : 5;
+  return `${addDaysIso(dayOffset)}T${definition.time}`;
+}
+
+function renderManualKnockoutModal() {
+  const tournament = state.data.tournament;
+  if (!tournament) return '';
+  if (tournament.knockout && tournament.knockout.mode === 'auto') return '';
+  const existing = new Map(((tournament.knockout && tournament.knockout.slots) || []).map((slot) => [slot.id, slot]));
+  const teamOptions = (selectedId) => `<option value="">TBD</option>${state.data.teams.map((team) => `<option value="${esc(team.id)}" ${selectedId === team.id ? 'selected' : ''}>${esc(team.name)}</option>`).join('')}`;
+  return `<form class="modal-form" data-form="admin-manual-knockout">
+    <span class="kicker">Fase gugur manual</span>
+    <h2 id="modal-title">Atur 8 besar sampai final.</h2>
+    <p class="modal-lede">Isi tim dan jam untuk setiap laga. Boleh biarkan TBD untuk babak yang belum diketahui. Pemenang laga tetap dicatat lewat Kontrol live.</p>
+    <div class="bracket-editor-grid">
+      ${KNOCKOUT_SLOT_DEFS.map((definition) => {
+        const slot = existing.get(definition.id);
+        const locked = Boolean(slot && slot.match && slot.match.status !== 'upcoming');
+        const kickoff = slot ? toDateTimeLocalValue(slot.kickoff) : defaultKnockoutKickoff(definition);
+        return `<div class="bracket-editor-card ${locked ? 'is-locked' : ''}">
+          <div class="bracket-editor-head"><span class="kicker">${esc(knockoutStageLabel(definition.stage))}</span><strong>${esc(definition.label)}</strong>${locked ? '<span class="locked-tag">Terkunci</span>' : ''}</div>
+          <div class="bracket-editor-fields">
+            <label class="bracket-editor-field"><span>Tim 1</span><select name="home_${definition.id}" ${locked ? 'disabled' : ''}>${teamOptions(slot ? slot.homeId : null)}</select></label>
+            <label class="bracket-editor-field"><span>Tim 2</span><select name="away_${definition.id}" ${locked ? 'disabled' : ''}>${teamOptions(slot ? slot.awayId : null)}</select></label>
+            <label class="bracket-editor-field bracket-time-field"><span>Waktu (WIB)</span><input type="datetime-local" name="kickoff_${definition.id}" value="${esc(kickoff)}" ${locked ? 'disabled' : ''} required></label>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-action="close-modal">Batal</button>
+      <button type="submit" class="btn btn-primary">${icon('check')} Simpan bracket</button>
+    </div>
+    <p class="form-hint">Laga yang sudah live atau selesai terkunci. Tim yang sudah dipilih di satu laga bisa dipilih lagi di babak berikutnya untuk kebutuhan perencanaan.</p>
+  </form>`;
 }
 
 function renderCreateMabarModal() {
@@ -1819,13 +1992,14 @@ function renderAdminMatch(match) {
           <option value="live" ${match.status === 'live' ? 'selected' : ''}>Live</option>
           <option value="finished" ${match.status === 'finished' ? 'selected' : ''}>Selesai</option>
         </select></label>
-        <label><span>Menit</span><input type="number" name="minute" min="0" max="90" value="${minuteValue}"></label>
+        <label><span>Menit</span><input type="number" name="minute" min="0" max="30" value="${minuteValue}"></label>
         <button type="submit" class="btn btn-sm btn-ghost">${icon('check')} Simpan</button>
       </form>
       <button type="button" class="btn btn-sm btn-ghost" data-action="admin-clock" data-match="${esc(match.id)}" data-running="${running ? 'false' : 'true'}">
         ${running ? icon('pause') + ' Jeda' : icon('play') + ' Lanjutkan'}
       </button>
       ${match.status === 'live' ? `<button type="button" class="btn btn-sm btn-danger-soft" data-action="admin-finish" data-match="${esc(match.id)}">${icon('whistle')} Full time</button>` : ''}
+      ${match.status === 'upcoming' ? `<button type="button" class="btn btn-sm btn-ghost" data-action="admin-release-match" data-match="${esc(match.id)}">${icon('x')} Keluarkan</button>` : ''}
     </div>
     <form class="admin-event-form" data-form="admin-event">
       <input type="hidden" name="matchId" value="${esc(match.id)}">
@@ -1837,7 +2011,7 @@ function renderAdminMatch(match) {
           <option value="sub">Pergantian</option>
         </select></label>
         <label><span>Pemain</span><select name="playerId" required>${playerOptions}</select></label>
-        <label><span>Menit</span><input type="number" name="minute" min="0" max="120" value="${minuteValue}"></label>
+        <label><span>Menit</span><input type="number" name="minute" min="0" max="30" value="${minuteValue}"></label>
       </div>
       <div class="admin-event-note">
         <input name="note" maxlength="140" placeholder="Catatan opsional, mis. Assist: Bima Saputra">
@@ -2082,7 +2256,7 @@ function renderAdminTournamentSettings() {
 function renderAdminTournamentGroups() {
   const tournament = state.data.tournament;
   if (!tournament) return '';
-  const locked = tournament.matchCount > 0 || tournament.status === 'finished';
+  const locked = tournament.matchCount > 0 || tournament.status === 'finished' || Boolean(tournament.knockout);
   const assigned = new Set(tournament.groups.flatMap((group) => group.teamIds));
   const availableCount = state.data.teams.filter((team) => !assigned.has(team.id)).length;
   return `<div class="panel admin-form-panel">
@@ -2154,14 +2328,96 @@ function renderNewTournamentPanel() {
   </div>`;
 }
 
+const KNOCKOUT_SLOT_DEFS = [
+  { id: 'qf1', stage: 'quarterfinal', label: '8 Besar 1', time: '09:00' },
+  { id: 'qf2', stage: 'quarterfinal', label: '8 Besar 2', time: '11:00' },
+  { id: 'qf3', stage: 'quarterfinal', label: '8 Besar 3', time: '14:00' },
+  { id: 'qf4', stage: 'quarterfinal', label: '8 Besar 4', time: '16:00' },
+  { id: 'sf1', stage: 'semifinal', label: 'Semifinal 1', time: '15:00' },
+  { id: 'sf2', stage: 'semifinal', label: 'Semifinal 2', time: '19:00' },
+  { id: 'third', stage: 'third', label: 'Perebutan Juara 3', time: '15:00' },
+  { id: 'final', stage: 'final', label: 'Final', time: '19:00' }
+];
+
+function knockoutStageLabel(stage) {
+  return { quarterfinal: '8 Besar', semifinal: 'Semifinal', third: 'Juara 3', final: 'Final' }[stage] || stage;
+}
+
+function bracketSlotStatus(slot) {
+  const match = slot.match;
+  if (!match) return '<span class="tiny-label">TBD</span>';
+  if (match.status === 'live') return `<span class="status-pill is-live"><span class="live-dot"></span>${match.minute}'</span>`;
+  if (match.status === 'finished') return `<span class="status-pill is-finished">FT · ${match.homeScore}–${match.awayScore}</span>`;
+  return '<span class="status-pill is-upcoming">Terjadwal</span>';
+}
+
+function renderAdminKnockoutPanel() {
+  const tournament = state.data.tournament;
+  if (!tournament) return '';
+  const knockout = tournament.knockout;
+  if (!knockout) {
+    const groupMatches = state.data.matches.filter((match) => match.tournamentId === tournament.id && match.groupId);
+    const groupsFull = tournament.groups.every((group) => group.standings.length === tournament.teamsPerGroup);
+    const groupReady = groupsFull && groupMatches.length > 0 && groupMatches.every((match) => match.status === 'finished');
+    return `<div class="panel admin-form-panel knockout-panel">
+      <div class="panel-head"><div><span class="panel-kicker">Fase gugur</span><h3>8 besar sampai final</h3></div>${icon('trophy')}</div>
+      <p class="inline-hint">Pilih cara mengisi tim dan waktu untuk 8 besar, semifinal, perebutan juara 3, dan final.</p>
+      <div class="knockout-options">
+        <div class="knockout-option">
+          <span class="knockout-option-icon">${icon('spark')}</span>
+          <h4>Otomatis</h4>
+          <p>Ambil 2 tim teratas setiap grup, lalu susun waktu seluruh fase gugur. Pemenang otomatis maju ke babak berikutnya.</p>
+          <button type="button" class="btn btn-primary btn-block btn-sm" data-action="generate-knockout-auto" ${groupReady ? '' : 'disabled'}>${icon('spark')} Isi otomatis</button>
+          <small>${groupReady ? 'Siap dibuat dari hasil fase grup.' : 'Selesaikan semua laga grup terlebih dahulu.'}</small>
+        </div>
+        <div class="knockout-option">
+          <span class="knockout-option-icon">${icon('admin')}</span>
+          <h4>Manual</h4>
+          <p>Isi sendiri nama tim dan jam pertandingan untuk seluruh babak, termasuk juara 3 dan final.</p>
+          <button type="button" class="btn btn-ghost btn-block btn-sm" data-action="open-manual-knockout">${icon('admin')} Isi manual</button>
+          <small>Bisa diisi bertahap sampai final dan juara 3.</small>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  const slots = knockout.slots || [];
+  const bracketMatches = state.data.matches.filter((match) => match.tournamentId === tournament.id && match.bracketSlot);
+  const hasResults = bracketMatches.some((match) => match.status !== 'upcoming' || match.events?.length || match.homeScore || match.awayScore);
+  const canDelete = !hasResults && tournament.status !== 'finished';
+  return `<div class="panel admin-form-panel knockout-panel">
+    <div class="panel-head">
+      <div><span class="panel-kicker">Fase gugur</span><h3>Bracket & jadwal</h3></div>
+      <span class="admin-bracket-mode">${knockout.mode === 'auto' ? 'OTOMATIS' : 'MANUAL'}</span>
+    </div>
+    <p class="inline-hint">Atur skor lewat Kontrol live setelah laga ditambahkan dari jadwal. ${matchFormatText()} per laga, tanpa hasil seri di fase gugur.</p>
+    <div class="admin-bracket-list">
+      ${slots.map((slot) => `<div class="admin-bracket-row ${slot.match && slot.match.status === 'finished' ? 'is-finished' : ''}">
+        <span class="admin-bracket-stage">${esc(knockoutStageLabel(slot.stage))}</span>
+        <span class="admin-bracket-label">${esc(slot.label)}</span>
+        <span class="admin-bracket-teams">${crest(slot.home, 'xs')}<span>${esc(slot.home ? slot.home.name : 'TBD')}</span><b>vs</b><span>${esc(slot.away ? slot.away.name : 'TBD')}</span>${crest(slot.away, 'xs')}</span>
+        <span class="admin-bracket-time">${esc(formatKickoff(slot.kickoff))}</span>
+        ${bracketSlotStatus(slot)}
+      </div>`).join('')}
+    </div>
+    <div class="admin-bracket-actions">
+      ${knockout.mode === 'manual' ? `<button type="button" class="btn btn-sm btn-ghost" data-action="open-manual-knockout">${icon('admin')} Edit tim & jam</button>` : ''}
+      ${canDelete ? `<button type="button" class="btn btn-sm btn-danger-soft" data-action="delete-knockout">${icon('trash')} Hapus bracket</button>` : ''}
+      <a href="/turnamen" data-link class="text-link">Lihat bracket publik ${icon('arrow')}</a>
+    </div>
+    ${hasResults ? '<p class="admin-lock-note">Bracket sudah memiliki hasil, jadi susunan dan waktu tidak bisa dihapus. Selesaikan pertandingan yang tersisa.</p>' : ''}
+  </div>`;
+}
+
 function renderAdminTournamentFixtures() {
   const tournament = state.data.tournament;
   if (!tournament) return '';
   const fixtures = state.data.matches
-    .filter((match) => match.tournamentId === tournament.id)
+    .filter((match) => match.tournamentId === tournament.id && match.groupId)
     .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
   const complete = tournament.groups.every((group) => group.standings.length === tournament.teamsPerGroup);
-  const canDelete = fixtures.length > 0 && fixtures.every((match) => match.status === 'upcoming');
+  const bracketLocked = Boolean(tournament.knockout);
+  const canDelete = !bracketLocked && fixtures.length > 0 && fixtures.every((match) => match.status === 'upcoming');
   const missingGroups = tournament.groups
     .filter((group) => group.standings.length < tournament.teamsPerGroup)
     .map((group) => `${group.id}: ${group.standings.length}/${tournament.teamsPerGroup}`);
@@ -2180,9 +2436,9 @@ function renderAdminTournamentFixtures() {
       </div>`).join('')}
     </div>
     <button type="button" class="btn btn-danger-soft btn-block" data-action="admin-delete-fixtures" ${canDelete ? '' : 'disabled'}>${icon('trash')} Hapus jadwal grup</button>
-    ${canDelete ? '<p class="admin-lock-note">Hapus jadwal hanya bisa dilakukan selama semua laga masih upcoming dan belum memiliki hasil.</p>' : '<p class="admin-lock-note">Jadwal tidak bisa dihapus karena sudah ada laga live/selesai.</p>'}`
-      : `<button type="button" class="btn btn-primary btn-block" data-action="admin-generate-fixtures" ${complete ? '' : 'disabled'}>${icon('calendar')} Buat jadwal round-robin</button>
-         <p class="admin-lock-note">${complete ? 'Sistem akan membuat semua pertemuan antartim di setiap grup.' : 'Penuhi semua slot grup terlebih dahulu.'}</p>`}
+    ${canDelete ? '<p class="admin-lock-note">Hapus jadwal hanya bisa dilakukan selama semua laga masih upcoming dan belum memiliki hasil.</p>' : bracketLocked ? '<p class="admin-lock-note">Jadwal grup dikunci karena fase gugur sudah dibuat. Hapus fase gugur terlebih dahulu.</p>' : '<p class="admin-lock-note">Jadwal tidak bisa dihapus karena sudah ada laga live/selesai.</p>'}`
+      : `<button type="button" class="btn btn-primary btn-block" data-action="admin-generate-fixtures" ${complete && !bracketLocked ? '' : 'disabled'}>${icon('calendar')} Buat jadwal round-robin</button>
+         <p class="admin-lock-note">${bracketLocked ? 'Hapus fase gugur sebelum membuat ulang jadwal grup.' : complete ? 'Sistem akan membuat semua pertemuan antartim di setiap grup.' : 'Penuhi semua slot grup terlebih dahulu.'}</p>`}
     <a href="/turnamen" data-link class="panel-link">Lihat halaman turnamen ${icon('arrow')}</a>
   </div>`;
 }
@@ -2216,9 +2472,10 @@ function renderAdminTournamentTab() {
   }
   return `<div class="admin-layout">
     <div class="admin-main">
+      ${renderAdminTournamentSettings()}
       ${renderAdminTournamentGroups()}
       ${renderAdminTournamentFixtures()}
-      ${renderAdminTournamentSettings()}
+      ${renderAdminKnockoutPanel()}
     </div>
     <aside class="admin-side">
       ${renderAdminTournamentHistory()}
@@ -2229,7 +2486,7 @@ function renderAdminTournamentTab() {
 
 function renderAdminDashboard() {
   const activeMatches = state.data.matches
-    .filter((match) => match.status === 'live' || match.status === 'upcoming')
+    .filter((match) => match.status === 'live' || (match.status === 'upcoming' && match.inControl))
     .sort((a, b) => {
       if (a.status === 'live' && b.status !== 'live') return -1;
       if (b.status === 'live' && a.status !== 'live') return 1;
@@ -2258,8 +2515,14 @@ function renderAdminDashboard() {
     </div>
     ${tab === 'live' ? `<div class="admin-layout">
       <div class="admin-main">
-        <div class="section-head compact"><div><span class="kicker">Pertandingan aktif</span><h2>Kontrol skor</h2></div><span class="tiny-label">${activeMatches.length} laga</span></div>
-        <div class="admin-match-list">${activeMatches.length ? activeMatches.map(renderAdminMatch).join('') : emptyState('ball', 'Tidak ada laga aktif', 'Tambahkan pertandingan baru di bawah.')}</div>
+        <div class="section-head compact admin-control-heading">
+          <div><span class="kicker">Pertandingan aktif · ${matchFormatText()}</span><h2>Kontrol skor</h2></div>
+          <div class="admin-head-actions">
+            <span class="tiny-label">${activeMatches.length} laga di kontrol</span>
+            <button type="button" class="btn btn-sm btn-primary" data-action="open-match-schedule">${icon('plus')} Tambah dari jadwal</button>
+          </div>
+        </div>
+        <div class="admin-match-list">${activeMatches.length ? activeMatches.map(renderAdminMatch).join('') : emptyState('ball', 'Belum ada laga di kontrol', 'Klik “Tambah dari jadwal” untuk memilih pertandingan yang akan dikendalikan.')}</div>
         ${renderAdminCreateMatch()}
       </div>
       <aside class="admin-side">
@@ -2683,6 +2946,76 @@ async function handleAction(element, event) {
     return;
   }
 
+  if (action === 'open-match-schedule') {
+    event.preventDefault();
+    openModal('match-schedule');
+    return;
+  }
+
+  if (action === 'admin-add-control') {
+    event.preventDefault();
+    const match = getMatch(element.dataset.match);
+    try {
+      await api(`/api/admin/matches/${encodeURIComponent(element.dataset.match)}`, {
+        method: 'PATCH',
+        body: { control: true }
+      });
+      closeModal();
+      await refreshState();
+      toast(`${match ? `${match.home.short} vs ${match.away.short}` : 'Pertandingan'} ditambahkan ke kontrol.`);
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+    return;
+  }
+
+  if (action === 'admin-release-match') {
+    event.preventDefault();
+    const match = getMatch(element.dataset.match);
+    try {
+      await api(`/api/admin/matches/${encodeURIComponent(element.dataset.match)}`, {
+        method: 'PATCH',
+        body: { control: false }
+      });
+      await refreshState();
+      toast(`${match ? `${match.home.short} vs ${match.away.short}` : 'Pertandingan'} dikeluarkan dari kontrol.`, 'info');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+    return;
+  }
+
+  if (action === 'generate-knockout-auto') {
+    event.preventDefault();
+    try {
+      await api('/api/admin/tournament/knockout/auto', { method: 'POST', body: {} });
+      await refreshState();
+      toast('Bracket 8 besar otomatis dibuat dari klasemen grup.');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+    return;
+  }
+
+  if (action === 'open-manual-knockout') {
+    event.preventDefault();
+    openModal('manual-knockout');
+    return;
+  }
+
+  if (action === 'delete-knockout') {
+    event.preventDefault();
+    if (!window.confirm('Hapus seluruh bracket fase gugur? Laga yang belum memiliki hasil akan dihapus.')) return;
+    try {
+      await api('/api/admin/tournament/knockout', { method: 'DELETE' });
+      await refreshState();
+      toast('Bracket fase gugur dihapus.');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+    return;
+  }
+
   if (action === 'open-group-picker') {
     event.preventDefault();
     openModal('group-team', { groupId: element.dataset.group });
@@ -3051,6 +3384,36 @@ async function handleForm(form) {
       state.ui.adminTab = 'tournament';
       await refreshState();
       toast('Turnamen baru siap. Bagi tim ke grup A–D.');
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      busy(submit, false);
+    }
+    return;
+  }
+
+  if (name === 'admin-manual-knockout') {
+    const parseKickoff = (value) => {
+      const raw = String(value || '');
+      if (!raw) return null;
+      const date = new Date(`${raw}${raw.length === 16 ? ':00' : ''}+07:00`);
+      return Number.isNaN(date.getTime()) ? null : date.toISOString();
+    };
+    const slots = KNOCKOUT_SLOT_DEFS.map((definition) => ({
+      id: definition.id,
+      homeId: values[`home_${definition.id}`] || null,
+      awayId: values[`away_${definition.id}`] || null,
+      kickoff: parseKickoff(values[`kickoff_${definition.id}`])
+    }));
+    busy(submit, true);
+    try {
+      await api('/api/admin/tournament/knockout/manual', {
+        method: 'PUT',
+        body: { slots }
+      });
+      closeModal();
+      await refreshState();
+      toast('Bracket fase gugur disimpan.');
     } catch (error) {
       toast(error.message, 'error');
     } finally {

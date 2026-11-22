@@ -196,12 +196,12 @@ function createSeed() {
       homeScore: 2, awayScore: 1, status: 'finished', events: []
     },
     {
-      id: 'match-live', round: 'Pekan 8', kickoff: kickoff(0, 16, 0),
+      id: 'match-live', round: 'Pekan 8', kickoff: new Date(Date.now() - 22 * MINUTE).toISOString(),
       venue: 'Lapangan Cempaka', homeId: 'garuda-fc', awayId: 'banteng-united',
       homeScore: 2, awayScore: 1, status: 'live',
       clock: {
         baseMinute: 0,
-        startedAt: new Date(Date.now() - 67 * MINUTE).toISOString(),
+        startedAt: new Date(Date.now() - 22 * MINUTE).toISOString(),
         running: true
       },
       stats: {
@@ -210,23 +210,23 @@ function createSeed() {
       },
       events: [
         {
-          id: 'ev-live-4', minute: 60, type: 'sub', teamId: 'banteng-united',
+          id: 'ev-live-4', minute: 21, type: 'sub', teamId: 'banteng-united',
           playerId: 'p-cakra', playerName: 'Cakra Wibowo', note: 'Keluar: Dimas Anggara'
         },
         {
-          id: 'ev-live-3', minute: 58, type: 'goal', teamId: 'garuda-fc',
+          id: 'ev-live-3', minute: 20, type: 'goal', teamId: 'garuda-fc',
           playerId: 'p-gilang', playerName: 'Gilang Ramadhan', note: 'Assist: Rizky Maulana'
         },
         {
-          id: 'ev-live-2', minute: 46, type: 'yellow', teamId: 'garuda-fc',
+          id: 'ev-live-2', minute: 15, type: 'yellow', teamId: 'garuda-fc',
           playerId: 'p-danu', playerName: 'Danu Wijaya', note: 'Pelanggaran taktis'
         },
         {
-          id: 'ev-live-1', minute: 34, type: 'goal', teamId: 'banteng-united',
+          id: 'ev-live-1', minute: 11, type: 'goal', teamId: 'banteng-united',
           playerId: 'p-aditya', playerName: 'Aditya Firmansyah', note: 'Assist: Bayu Kurniawan'
         },
         {
-          id: 'ev-live-0', minute: 12, type: 'goal', teamId: 'garuda-fc',
+          id: 'ev-live-0', minute: 3, type: 'goal', teamId: 'garuda-fc',
           playerId: 'p-raka', playerName: 'Raka Pratama', note: 'Assist: Bima Saputra'
         }
       ]

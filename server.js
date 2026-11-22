@@ -18,6 +18,18 @@ const SESSION_SECRET = crypto.randomBytes(32);
 const SESSION_COOKIE = 'mini_soccer_admin';
 const SESSION_MS = 8 * 60 * 60 * 1000;
 const MINUTE_MS = 60 * 1000;
+const MATCH_MINUTES = 30;
+const HALF_MINUTES = 15;
+const KNOCKOUT_TEMPLATE = [
+  { id: 'qf1', stage: 'quarterfinal', label: '8 Besar 1' },
+  { id: 'qf2', stage: 'quarterfinal', label: '8 Besar 2' },
+  { id: 'qf3', stage: 'quarterfinal', label: '8 Besar 3' },
+  { id: 'qf4', stage: 'quarterfinal', label: '8 Besar 4' },
+  { id: 'sf1', stage: 'semifinal', label: 'Semifinal 1' },
+  { id: 'sf2', stage: 'semifinal', label: 'Semifinal 2' },
+  { id: 'third', stage: 'third', label: 'Perebutan Juara 3' },
+  { id: 'final', stage: 'final', label: 'Final' }
+];
 
 class HttpError extends Error {
   constructor(status, message) {
@@ -173,7 +185,7 @@ function matchMinute(match) {
       minute += Math.floor((Date.now() - started) / MINUTE_MS);
     }
   }
-  return clamp(Math.floor(minute), 0, 90);
+  return clamp(Math.floor(minute), 0, MATCH_MINUTES);
 }
 
 function computeStandings() {
@@ -405,7 +417,9 @@ function computeTournament() {
     slotsFilled: groups.reduce((total, group) => total + group.standings.length, 0),
     matchCount: tournamentMatches.length,
     finishedCount: tournamentMatches.filter((match) => match.status === 'finished').length,
-    leaders: tournamentLeaders(tournamentMatches)
+    knockoutMatchCount: knockoutMatchCount(tournament),
+    leaders: tournamentLeaders(tournamentMatches),
+    knockout: enrichKnockout(tournament)
   };
 }
 
@@ -423,6 +437,172 @@ function tournamentHistorySummary() {
       archivedAt: tournament.archivedAt || null
     };
   }).sort((a, b) => new Date(b.archivedAt || 0) - new Date(a.archivedAt || 0));
+}
+
+function wibIsoAt(baseMs, addDays, hour, minute) {
+  const shifted = new Date(baseMs + addDays * 24 * 60 * 60 * 1000 + 7 * 60 * 60 * 1000);
+  const date = new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()));
+  return new Date(date.getTime() + ((hour - 7) * 60 + minute) * 60 * 1000).toISOString();
+}
+
+function autoKnockoutKickoffs(groupMatches) {
+  const lastKickoff = groupMatches.reduce((latest, match) => {
+    const time = Date.parse(match.kickoff);
+    return Number.isFinite(time) ? Math.max(latest, time) : latest;
+  }, 0);
+  const base = Math.max(Date.now(), lastKickoff) + 24 * 60 * 60 * 1000;
+  return {
+    qf1: wibIsoAt(base, 0, 9, 0),
+    qf2: wibIsoAt(base, 0, 11, 0),
+    qf3: wibIsoAt(base, 0, 14, 0),
+    qf4: wibIsoAt(base, 0, 16, 0),
+    sf1: wibIsoAt(base, 1, 15, 0),
+    sf2: wibIsoAt(base, 1, 19, 0),
+    third: wibIsoAt(base, 2, 15, 0),
+    final: wibIsoAt(base, 2, 19, 0)
+  };
+}
+
+function findBracketMatch(tournament, slot) {
+  if (!slot) return null;
+  if (slot.matchId) {
+    const match = db.matches.find((item) => item.id === slot.matchId);
+    if (match) return match;
+  }
+  return db.matches.find((match) => match.tournamentId === tournament.id && match.bracketSlot === slot.id) || null;
+}
+
+function createBracketMatch(tournament, slot) {
+  if (!slot.homeId || !slot.awayId) return null;
+  const existing = findBracketMatch(tournament, slot);
+  if (existing) {
+    slot.matchId = existing.id;
+    return existing;
+  }
+  const match = {
+    id: `match-${crypto.randomBytes(4).toString('hex')}`,
+    round: slot.label,
+    tournamentId: tournament.id,
+    stage: slot.stage,
+    bracketSlot: slot.id,
+    kickoff: slot.kickoff,
+    venue: tournament.venue || 'Lapangan Mini Soccer',
+    homeId: slot.homeId,
+    awayId: slot.awayId,
+    homeScore: 0,
+    awayScore: 0,
+    status: 'upcoming',
+    events: []
+  };
+  db.matches.push(match);
+  slot.matchId = match.id;
+  return match;
+}
+
+function bracketWinnerId(match) {
+  if (!match || match.status !== 'finished') return null;
+  if (number(match.homeScore, 0) === number(match.awayScore, 0)) return null;
+  return number(match.homeScore, 0) > number(match.awayScore, 0) ? match.homeId : match.awayId;
+}
+
+function bracketLoserId(match) {
+  if (!match || match.status !== 'finished') return null;
+  if (number(match.homeScore, 0) === number(match.awayScore, 0)) return null;
+  return number(match.homeScore, 0) > number(match.awayScore, 0) ? match.awayId : match.homeId;
+}
+
+function setBracketSlotTeams(tournament, slot, homeId, awayId) {
+  if (!slot) return false;
+  const nextHome = homeId || null;
+  const nextAway = awayId || null;
+  const existing = findBracketMatch(tournament, slot);
+  if (existing && existing.status !== 'upcoming') return false;
+  const changed = slot.homeId !== nextHome || slot.awayId !== nextAway;
+  if (!changed && existing) {
+    slot.matchId = existing.id;
+    return false;
+  }
+  slot.homeId = nextHome;
+  slot.awayId = nextAway;
+  if (existing) {
+    if (nextHome && nextAway) {
+      existing.homeId = nextHome;
+      existing.awayId = nextAway;
+      if (slot.kickoff) existing.kickoff = slot.kickoff;
+      slot.matchId = existing.id;
+    } else if (!(existing.events || []).length && number(existing.homeScore, 0) === 0 && number(existing.awayScore, 0) === 0) {
+      db.matches = db.matches.filter((match) => match.id !== existing.id);
+      slot.matchId = null;
+    } else {
+      return false;
+    }
+  }
+  if (nextHome && nextAway) createBracketMatch(tournament, slot);
+  return true;
+}
+
+function syncAutoKnockout(tournament) {
+  const knockout = tournament && tournament.knockout;
+  if (!knockout || knockout.mode !== 'auto') return false;
+  const slots = new Map((knockout.slots || []).map((slot) => [slot.id, slot]));
+  const winner = (id) => bracketWinnerId(findBracketMatch(tournament, slots.get(id)));
+  const loser = (id) => bracketLoserId(findBracketMatch(tournament, slots.get(id)));
+  let changed = false;
+  changed = setBracketSlotTeams(tournament, slots.get('sf1'), winner('qf1'), winner('qf2')) || changed;
+  changed = setBracketSlotTeams(tournament, slots.get('sf2'), winner('qf3'), winner('qf4')) || changed;
+  changed = setBracketSlotTeams(tournament, slots.get('third'), loser('sf1'), loser('sf2')) || changed;
+  changed = setBracketSlotTeams(tournament, slots.get('final'), winner('sf1'), winner('sf2')) || changed;
+  return changed;
+}
+
+function enrichKnockout(tournament) {
+  const knockout = tournament && tournament.knockout;
+  if (!knockout) return null;
+  const slots = (knockout.slots || []).map((slot) => {
+    const match = findBracketMatch(tournament, slot);
+    const home = slot.homeId ? teamMap.get(slot.homeId) || null : null;
+    const away = slot.awayId ? teamMap.get(slot.awayId) || null : null;
+    return {
+      ...slot,
+      home,
+      away,
+      match: match
+        ? {
+            id: match.id,
+            status: match.status,
+            homeScore: number(match.homeScore, 0),
+            awayScore: number(match.awayScore, 0),
+            minute: matchMinute(match),
+            kickoff: match.kickoff,
+            venue: match.venue
+          }
+        : null
+    };
+  });
+  const byId = new Map(slots.map((slot) => [slot.id, slot]));
+  const finalSlot = byId.get('final');
+  const thirdSlot = byId.get('third');
+  const finalMatch = finalSlot ? findBracketMatch(tournament, finalSlot) : null;
+  const thirdMatch = thirdSlot ? findBracketMatch(tournament, thirdSlot) : null;
+  const finalWinner = bracketWinnerId(finalMatch);
+  const finalLoser = bracketLoserId(finalMatch);
+  const thirdWinner = bracketWinnerId(thirdMatch);
+  const thirdLoser = bracketLoserId(thirdMatch);
+  return {
+    mode: knockout.mode,
+    createdAt: knockout.createdAt,
+    slots,
+    podium: {
+      champion: finalWinner ? teamMap.get(finalWinner) || null : null,
+      runnerUp: finalLoser ? teamMap.get(finalLoser) || null : null,
+      third: thirdWinner ? teamMap.get(thirdWinner) || null : null,
+      fourth: thirdLoser ? teamMap.get(thirdLoser) || null : null
+    }
+  };
+}
+
+function knockoutMatchCount(tournament) {
+  return db.matches.filter((match) => match.tournamentId === tournament.id && match.bracketSlot).length;
 }
 
 function publicState() {
@@ -479,7 +659,10 @@ function publicState() {
   }));
 
   return {
-    meta: db.meta,
+    meta: {
+      ...db.meta,
+      matchFormat: { totalMinutes: MATCH_MINUTES, halves: 2, minutesPerHalf: HALF_MINUTES }
+    },
     teams,
     players,
     matches,
@@ -909,6 +1092,15 @@ async function handleApi(req, res, url) {
         if (unfinished.length) {
           throw new HttpError(409, `Selesaikan ${unfinished.length} pertandingan turnamen terlebih dahulu sebelum menutup turnamen.`);
         }
+        if (tournament.knockout) {
+          const incompleteBracket = tournament.knockout.slots.filter((slot) => {
+            const match = findBracketMatch(tournament, slot);
+            return !match || match.status !== 'finished';
+          });
+          if (incompleteBracket.length) {
+            throw new HttpError(409, 'Selesaikan seluruh fase gugur termasuk perebutan juara 3 dan final sebelum menutup turnamen.');
+          }
+        }
       }
       tournament.status = status;
     }
@@ -926,6 +1118,7 @@ async function handleApi(req, res, url) {
     if (body.teamsPerGroup != null) {
       const teamsPerGroup = Math.floor(number(body.teamsPerGroup, 0));
       if (![3, 4].includes(teamsPerGroup)) throw new HttpError(400, 'Format grup harus 3 atau 4 tim.');
+      if (tournament.knockout) throw new HttpError(409, 'Hapus fase gugur sebelum mengubah format turnamen.');
       if (hasFixtures && teamsPerGroup !== tournament.teamsPerGroup) {
         throw new HttpError(409, 'Hapus jadwal grup sebelum mengubah format turnamen.');
       }
@@ -934,6 +1127,7 @@ async function handleApi(req, res, url) {
 
     if (body.assignments != null) {
       if (tournament.status === 'finished') throw new HttpError(409, 'Turnamen sudah ditutup. Buat turnamen baru untuk mengubah pembagian grup.');
+      if (tournament.knockout) throw new HttpError(409, 'Hapus fase gugur sebelum mengubah pembagian grup.');
       if (hasFixtures) throw new HttpError(409, 'Hapus jadwal grup sebelum mengubah pembagian grup.');
       if (typeof body.assignments !== 'object' || Array.isArray(body.assignments)) {
         throw new HttpError(400, 'Data pembagian grup tidak valid.');
@@ -1017,10 +1211,144 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (method === 'POST' && pathname === '/api/admin/tournament/knockout/auto') {
+    const tournament = db.tournament;
+    if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
+    if (tournament.status === 'finished') throw new HttpError(409, 'Turnamen sudah ditutup.');
+    if (tournament.knockout) throw new HttpError(409, 'Fase gugur sudah dibuat.');
+    const groupMatches = db.matches.filter((match) => match.tournamentId === tournament.id && match.groupId);
+    if (!groupMatches.length) throw new HttpError(400, 'Buat dan selesaikan jadwal fase grup terlebih dahulu.');
+    if (groupMatches.some((match) => match.status !== 'finished')) {
+      throw new HttpError(409, 'Selesaikan semua pertandingan fase grup sebelum mengisi 8 besar otomatis.');
+    }
+    const tournamentState = computeTournament();
+    const groupMap = new Map(tournamentState.groups.map((group) => [group.id, group]));
+    if (tournamentState.groups.some((group) => group.standings.length !== tournament.teamsPerGroup)) {
+      throw new HttpError(409, 'Semua slot grup harus terisi sebelum membuat fase gugur.');
+    }
+    for (const id of ['A', 'B', 'C', 'D']) {
+      if (!groupMap.get(id) || groupMap.get(id).standings.length < 2) {
+        throw new HttpError(409, 'Setiap grup membutuhkan minimal dua tim dengan hasil pertandingan.');
+      }
+    }
+    const a = groupMap.get('A').standings;
+    const b = groupMap.get('B').standings;
+    const c = groupMap.get('C').standings;
+    const d = groupMap.get('D').standings;
+    const pairings = {
+      qf1: [a[0].teamId, b[1].teamId],
+      qf2: [c[0].teamId, d[1].teamId],
+      qf3: [b[0].teamId, a[1].teamId],
+      qf4: [d[0].teamId, c[1].teamId]
+    };
+    const times = autoKnockoutKickoffs(groupMatches);
+    const slots = KNOCKOUT_TEMPLATE.map((template) => ({
+      ...template,
+      homeId: pairings[template.id] ? pairings[template.id][0] : null,
+      awayId: pairings[template.id] ? pairings[template.id][1] : null,
+      kickoff: times[template.id],
+      matchId: null
+    }));
+    tournament.knockout = {
+      mode: 'auto',
+      createdAt: new Date().toISOString(),
+      slots
+    };
+    for (const slot of slots.filter((item) => item.stage === 'quarterfinal')) {
+      createBracketMatch(tournament, slot);
+    }
+    persist();
+    broadcast();
+    sendJson(res, 201, { ok: true, tournament: computeTournament() });
+    return;
+  }
+
+  if (method === 'PUT' && pathname === '/api/admin/tournament/knockout/manual') {
+    const body = await readJson(req);
+    const tournament = db.tournament;
+    if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
+    if (tournament.status === 'finished') throw new HttpError(409, 'Turnamen sudah ditutup.');
+    if (tournament.knockout && tournament.knockout.mode === 'auto') {
+      throw new HttpError(409, 'Hapus fase gugur otomatis sebelum mengisi manual.');
+    }
+    if (!Array.isArray(body.slots)) throw new HttpError(400, 'Data slot fase gugur tidak valid.');
+    const inputById = new Map(body.slots.map((slot) => [text(slot.id, 20), slot]));
+    const existing = tournament.knockout;
+    const oldSlots = new Map(((existing && existing.slots) || []).map((slot) => [slot.id, slot]));
+    const nextSlots = [];
+    const oldMatchesToRemove = [];
+    for (const template of KNOCKOUT_TEMPLATE) {
+      const oldSlot = oldSlots.get(template.id);
+      const oldMatch = oldSlot ? findBracketMatch(tournament, oldSlot) : null;
+      if (oldMatch && oldMatch.status !== 'upcoming') {
+        nextSlots.push(oldSlot);
+        continue;
+      }
+      const input = inputById.get(template.id) || oldSlot;
+      if (!input) throw new HttpError(400, `Slot ${template.label} belum diisi.`);
+      const kickoff = new Date(input.kickoff || (oldSlot && oldSlot.kickoff));
+      if (Number.isNaN(kickoff.getTime())) throw new HttpError(400, `Waktu ${template.label} tidak valid.`);
+      const homeId = text(input.homeId, 60) || null;
+      const awayId = text(input.awayId, 60) || null;
+      if (homeId && !teamMap.has(homeId)) throw new HttpError(400, `Tim pada ${template.label} tidak valid.`);
+      if (awayId && !teamMap.has(awayId)) throw new HttpError(400, `Tim pada ${template.label} tidak valid.`);
+      if (homeId && homeId === awayId) throw new HttpError(400, `${template.label} tidak boleh mempertemukan tim yang sama.`);
+      if (oldMatch) {
+        if ((oldMatch.events || []).length || number(oldMatch.homeScore, 0) || number(oldMatch.awayScore, 0)) {
+          throw new HttpError(409, `Hapus kejadian/skor ${template.label} sebelum mengubah jadwalnya.`);
+        }
+        oldMatchesToRemove.push(oldMatch.id);
+      }
+      editableIds.add(template.id);
+      nextSlots.push({
+        ...template,
+        homeId,
+        awayId,
+        kickoff: kickoff.toISOString(),
+        matchId: null
+      });
+    }
+    if (oldMatchesToRemove.length) {
+      const removeIds = new Set(oldMatchesToRemove);
+      db.matches = db.matches.filter((match) => !removeIds.has(match.id));
+    }
+    tournament.knockout = {
+      mode: 'manual',
+      createdAt: (existing && existing.createdAt) || new Date().toISOString(),
+      slots: nextSlots
+    };
+    for (const slot of nextSlots) createBracketMatch(tournament, slot);
+    persist();
+    broadcast();
+    sendJson(res, 200, { ok: true, tournament: computeTournament() });
+    return;
+  }
+
+  if (method === 'DELETE' && pathname === '/api/admin/tournament/knockout') {
+    const tournament = db.tournament;
+    if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
+    if (!tournament.knockout) throw new HttpError(404, 'Fase gugur belum dibuat.');
+    if (tournament.status === 'finished') throw new HttpError(409, 'Turnamen sudah ditutup.');
+    const bracketMatches = db.matches.filter((match) => match.tournamentId === tournament.id && match.bracketSlot);
+    if (bracketMatches.some((match) => match.status !== 'upcoming' || (match.events || []).length || number(match.homeScore, 0) || number(match.awayScore, 0))) {
+      throw new HttpError(409, 'Fase gugur yang sudah memiliki hasil tidak bisa dihapus.');
+    }
+    if (bracketMatches.length) {
+      const ids = new Set(bracketMatches.map((match) => match.id));
+      db.matches = db.matches.filter((match) => !ids.has(match.id));
+    }
+    tournament.knockout = null;
+    persist();
+    broadcast();
+    sendJson(res, 200, { ok: true, tournament: computeTournament() });
+    return;
+  }
+
   if (method === 'POST' && pathname === '/api/admin/tournament/fixtures') {
     const tournament = db.tournament;
     if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
     if (tournament.status === 'finished') throw new HttpError(409, 'Turnamen sudah ditutup.');
+    if (tournament.knockout) throw new HttpError(409, 'Hapus fase gugur sebelum menyusun ulang jadwal grup.');
     if (db.matches.some((match) => match.tournamentId === tournament.id)) {
       throw new HttpError(409, 'Jadwal grup sudah dibuat.');
     }
@@ -1087,6 +1415,7 @@ async function handleApi(req, res, url) {
   if (method === 'DELETE' && pathname === '/api/admin/tournament/fixtures') {
     const tournament = db.tournament;
     if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
+    if (tournament.knockout) throw new HttpError(409, 'Hapus fase gugur sebelum menghapus jadwal grup.');
     const fixtures = db.matches.filter((match) => match.tournamentId === tournament.id);
     if (!fixtures.length) throw new HttpError(404, 'Belum ada jadwal grup.');
     if (fixtures.some((match) => match.status !== 'upcoming')) {
@@ -1223,15 +1552,18 @@ async function handleApi(req, res, url) {
       if (!allowed.includes(status)) throw new HttpError(400, 'Status pertandingan tidak valid.');
       if (status === 'live' && match.status !== 'live') {
         match.clock = {
-          baseMinute: Number.isFinite(Number(body.minute)) ? clamp(number(body.minute), 0, 90) : 0,
+          baseMinute: Number.isFinite(Number(body.minute)) ? clamp(number(body.minute), 0, MATCH_MINUTES) : 0,
           startedAt: new Date().toISOString(),
           running: true
         };
       }
       if (status === 'finished') {
+        if (match.bracketSlot && number(match.homeScore, 0) === number(match.awayScore, 0)) {
+          throw new HttpError(409, 'Laga fase gugur tidak boleh berakhir seri. Tentukan pemenang terlebih dahulu.');
+        }
         match.clock = {
           baseMinute: Number.isFinite(Number(body.minute))
-            ? clamp(number(body.minute), 0, 120)
+            ? clamp(number(body.minute), 0, MATCH_MINUTES)
             : matchMinute(match),
           startedAt: new Date().toISOString(),
           running: false
@@ -1244,7 +1576,7 @@ async function handleApi(req, res, url) {
     }
     if (body.minute != null && match.status === 'live') {
       match.clock = match.clock || {};
-      match.clock.baseMinute = clamp(number(body.minute), 0, 90);
+      match.clock.baseMinute = clamp(number(body.minute), 0, MATCH_MINUTES);
       match.clock.startedAt = new Date().toISOString();
     }
     if (body.running != null) {
@@ -1259,10 +1591,14 @@ async function handleApi(req, res, url) {
       }
     }
     if (body.venue != null) match.venue = text(body.venue, 80) || match.venue;
+    if (body.control != null) match.inControl = Boolean(body.control);
     if (body.minute != null && match.status !== 'live') {
       match.clock = match.clock || {};
-      match.clock.baseMinute = clamp(number(body.minute), 0, 120);
+      match.clock.baseMinute = clamp(number(body.minute), 0, MATCH_MINUTES);
       match.clock.running = false;
+    }
+    if (match.bracketSlot && match.status === 'finished' && db.tournament && db.tournament.id === match.tournamentId) {
+      syncAutoKnockout(db.tournament);
     }
     persist();
     broadcast();
@@ -1273,6 +1609,8 @@ async function handleApi(req, res, url) {
   if (matchIdMatch && method === 'DELETE') {
     const id = decodeURIComponent(matchIdMatch[1]);
     const before = db.matches.length;
+    const target = db.matches.find((match) => match.id === id);
+    if (target && target.bracketSlot) throw new HttpError(409, 'Pertandingan fase gugur tidak bisa dihapus dari sini. Hapus bracket fase gugur terlebih dahulu.');
     db.matches = db.matches.filter((match) => match.id !== id);
     if (db.matches.length === before) throw new HttpError(404, 'Pertandingan tidak ditemukan.');
     persist();
@@ -1290,7 +1628,16 @@ async function handleApi(req, res, url) {
     if (side !== 'home' && side !== 'away') throw new HttpError(400, 'Sisi tim tidak valid.');
     if (delta === 0 || Math.abs(delta) > 9) throw new HttpError(400, 'Perubahan skor tidak valid.');
     const key = side === 'home' ? 'homeScore' : 'awayScore';
-    match[key] = clamp(number(match[key], 0) + delta, 0, 99);
+    const nextScore = clamp(number(match[key], 0) + delta, 0, 99);
+    if (match.bracketSlot && match.status === 'finished') {
+      const homeScore = side === 'home' ? nextScore : number(match.homeScore, 0);
+      const awayScore = side === 'away' ? nextScore : number(match.awayScore, 0);
+      if (homeScore === awayScore) throw new HttpError(409, 'Skor laga fase gugur tidak boleh seri.');
+    }
+    match[key] = nextScore;
+    if (match.bracketSlot && match.status === 'finished' && db.tournament && db.tournament.id === match.tournamentId) {
+      syncAutoKnockout(db.tournament);
+    }
     persist();
     broadcast();
     sendJson(res, 200, { ok: true, match });
@@ -1300,6 +1647,9 @@ async function handleApi(req, res, url) {
   const eventMatch = pathname.match(/^\/api\/admin\/matches\/([^/]+)\/events$/);
   if (eventMatch && method === 'POST') {
     const match = findMatch(decodeURIComponent(eventMatch[1]));
+    if (match.bracketSlot && match.status === 'finished') {
+      throw new HttpError(409, 'Kejadian laga fase gugur yang sudah selesai tidak bisa diubah.');
+    }
     const body = await readJson(req);
     const side = text(body.side, 10);
     const type = text(body.type, 20);
@@ -1316,7 +1666,7 @@ async function handleApi(req, res, url) {
     if (type === 'goal' && !player) throw new HttpError(400, 'Pilih pencetak gol.');
     const event = {
       id: `ev-${crypto.randomBytes(4).toString('hex')}`,
-      minute: clamp(Math.floor(number(body.minute, matchMinute(match))), 0, 120),
+      minute: clamp(Math.floor(number(body.minute, matchMinute(match))), 0, MATCH_MINUTES),
       type,
       teamId,
       playerId: player ? player.id : null,
@@ -1339,6 +1689,9 @@ async function handleApi(req, res, url) {
   const deleteEvent = pathname.match(/^\/api\/admin\/matches\/([^/]+)\/events\/([^/]+)$/);
   if (deleteEvent && method === 'DELETE') {
     const match = findMatch(decodeURIComponent(deleteEvent[1]));
+    if (match.bracketSlot && match.status === 'finished') {
+      throw new HttpError(409, 'Kejadian laga fase gugur yang sudah selesai tidak bisa diubah.');
+    }
     const eventId = decodeURIComponent(deleteEvent[2]);
     const event = (match.events || []).find((item) => item.id === eventId);
     if (!event) throw new HttpError(404, 'Kejadian tidak ditemukan.');
