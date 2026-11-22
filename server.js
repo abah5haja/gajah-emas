@@ -48,6 +48,10 @@ function loadDb() {
       data.tournament.qualifyPerGroup = 2;
       changed = true;
     }
+    if (!Array.isArray(data.tournamentHistory)) {
+      data.tournamentHistory = [];
+      changed = true;
+    }
     if (changed) fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
     return data;
   } catch (error) {
@@ -405,6 +409,22 @@ function computeTournament() {
   };
 }
 
+function tournamentHistorySummary() {
+  return (db.tournamentHistory || []).map((tournament) => {
+    const teamIds = new Set((tournament.groups || []).flatMap((group) => group.teamIds || []));
+    return {
+      id: tournament.id,
+      name: tournament.name,
+      status: tournament.status,
+      startsAt: tournament.startsAt,
+      teamsPerGroup: tournament.teamsPerGroup,
+      teamCount: teamIds.size,
+      matchCount: db.matches.filter((match) => match.tournamentId === tournament.id).length,
+      archivedAt: tournament.archivedAt || null
+    };
+  }).sort((a, b) => new Date(b.archivedAt || 0) - new Date(a.archivedAt || 0));
+}
+
 function publicState() {
   const standings = computeStandings();
   const teamLookup = new Map(standings.map((row) => [row.teamId, row]));
@@ -465,6 +485,7 @@ function publicState() {
     matches,
     mabar,
     tournament: computeTournament(),
+    tournamentHistory: tournamentHistorySummary(),
     standings,
     scorers,
     yellowLeaders,
@@ -883,6 +904,12 @@ async function handleApi(req, res, url) {
     if (body.status != null) {
       const status = text(body.status, 20);
       if (!['upcoming', 'live', 'finished'].includes(status)) throw new HttpError(400, 'Status turnamen tidak valid.');
+      if (status === 'finished') {
+        const unfinished = db.matches.filter((match) => match.tournamentId === tournament.id && match.status !== 'finished');
+        if (unfinished.length) {
+          throw new HttpError(409, `Selesaikan ${unfinished.length} pertandingan turnamen terlebih dahulu sebelum menutup turnamen.`);
+        }
+      }
       tournament.status = status;
     }
     if (body.venue != null) {
@@ -906,6 +933,7 @@ async function handleApi(req, res, url) {
     }
 
     if (body.assignments != null) {
+      if (tournament.status === 'finished') throw new HttpError(409, 'Turnamen sudah ditutup. Buat turnamen baru untuk mengubah pembagian grup.');
       if (hasFixtures) throw new HttpError(409, 'Hapus jadwal grup sebelum mengubah pembagian grup.');
       if (typeof body.assignments !== 'object' || Array.isArray(body.assignments)) {
         throw new HttpError(400, 'Data pembagian grup tidak valid.');
@@ -939,9 +967,60 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (method === 'POST' && pathname === '/api/admin/tournament/new') {
+    const body = await readJson(req);
+    const previous = db.tournament;
+    if (previous && previous.status !== 'finished') {
+      throw new HttpError(409, 'Tutup turnamen yang sekarang sebelum membuat turnamen baru.');
+    }
+    if (previous) {
+      const unfinished = db.matches.filter((match) => match.tournamentId === previous.id && match.status !== 'finished');
+      if (unfinished.length) {
+        throw new HttpError(409, 'Masih ada pertandingan turnamen yang belum selesai.');
+      }
+    }
+    const name = text(body.name, 80);
+    if (name.length < 3) throw new HttpError(400, 'Nama turnamen minimal 3 karakter.');
+    const teamsPerGroup = Math.floor(number(body.teamsPerGroup, 3));
+    if (![3, 4].includes(teamsPerGroup)) throw new HttpError(400, 'Format grup harus 3 atau 4 tim.');
+    const startsAt = new Date(body.startsAt);
+    if (Number.isNaN(startsAt.getTime())) throw new HttpError(400, 'Tanggal mulai tidak valid.');
+    const venue = text(body.venue, 80);
+    if (venue.length < 3) throw new HttpError(400, 'Nama lapangan minimal 3 karakter.');
+    const notes = text(body.notes, 300);
+
+    if (previous) {
+      if (!Array.isArray(db.tournamentHistory)) db.tournamentHistory = [];
+      previous.archivedAt = new Date().toISOString();
+      db.tournamentHistory.unshift(previous);
+    }
+    db.tournament = {
+      id: `turnamen-${Date.now().toString(36)}-${crypto.randomBytes(2).toString('hex')}`,
+      name,
+      status: 'upcoming',
+      teamsPerGroup,
+      qualifyPerGroup: 2,
+      startsAt: startsAt.toISOString(),
+      venue,
+      notes: notes || 'Fase grup empat grup. Peringkat 1 dan 2 setiap grup melaju ke babak perempat final.',
+      groups: ['A', 'B', 'C', 'D'].map((id) => ({
+        id,
+        name: `Grup ${id}`,
+        teamIds: []
+      })),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    persist();
+    broadcast();
+    sendJson(res, 201, { ok: true, tournament: computeTournament(), history: tournamentHistorySummary() });
+    return;
+  }
+
   if (method === 'POST' && pathname === '/api/admin/tournament/fixtures') {
     const tournament = db.tournament;
     if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
+    if (tournament.status === 'finished') throw new HttpError(409, 'Turnamen sudah ditutup.');
     if (db.matches.some((match) => match.tournamentId === tournament.id)) {
       throw new HttpError(409, 'Jadwal grup sudah dibuat.');
     }

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Auto-push setiap commit ke origin/main.
+# Log: .git/auto-push.log
+if git remote get-url origin >/dev/null 2>&1; then
+  nohup git push origin main >> .git/auto-push.log 2>&1 &
+fi

@@ -327,7 +327,8 @@ function createSeed() {
     players,
     matches,
     mabar,
-    tournament: buildTournament(teams)
+    tournament: buildTournament(teams),
+    tournamentHistory: []
   };
 }
 
