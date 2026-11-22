@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#070907">
+  <meta name="description" content="Pusat pertandingan mini soccer: skor live, klasemen, profil tim dan pemain, serta jadwal mabar.">
+  <title>Pertandingan — Mini Soccer Live</title>
+  <script>
+    try {
+      document.documentElement.dataset.theme = localStorage.getItem('pertandingan_theme') === 'light' ? 'light' : 'dark';
+    } catch (_) {}
+  </script>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="ambient" aria-hidden="true">
+    <span class="ambient-glow ambient-glow-a"></span>
+    <span class="ambient-glow ambient-glow-b"></span>
+    <span class="ambient-grid"></span>
+  </div>
+  <a class="skip-link" href="#view">Lewati ke konten</a>
+  <header id="site-header"></header>
+  <div id="ticker-root"></div>
+  <main id="view" tabindex="-1"></main>
+  <footer id="site-footer"></footer>
+  <nav id="mobile-nav" class="mobile-nav" aria-label="Navigasi utama"></nav>
+  <div id="modal-root"></div>
+  <div id="toast-root" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
+  <script src="/app.js" defer></script>
+</body>
+</html>
