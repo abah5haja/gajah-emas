@@ -326,8 +326,37 @@ function createSeed() {
     teams,
     players,
     matches,
-    mabar
+    mabar,
+    tournament: buildTournament(teams)
   };
 }
 
-module.exports = { createSeed };
+const TOURNAMENT_GROUP_IDS = ['A', 'B', 'C', 'D'];
+
+function buildTournament(teams, options = {}) {
+  const teamsPerGroup = 3;
+  const groups = TOURNAMENT_GROUP_IDS.map((id) => ({
+    id,
+    name: `Grup ${id}`,
+    teamIds: []
+  }));
+  const slotTotal = TOURNAMENT_GROUP_IDS.length * teamsPerGroup;
+  teams.slice(0, slotTotal).forEach((team, index) => {
+    groups[index % groups.length].teamIds.push(team.id);
+  });
+  return {
+    id: 'gajah-emas-cup-2026',
+    name: 'Gajah Emas Cup 2026',
+    status: 'upcoming',
+    teamsPerGroup,
+    qualifyPerGroup: 2,
+    startsAt: options.startsAt || kickoff(21, 9, 0),
+    venue: options.venue || 'Lapangan Cempaka',
+    notes: 'Fase grup empat grup. Peringkat 1 dan 2 setiap grup melaju ke babak perempat final.',
+    groups,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+module.exports = { createSeed, buildTournament };

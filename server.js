@@ -4,7 +4,8 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { createSeed } = require('./seed');
+const { createSeed, buildTournament } = require('./seed');
+const { buildTeamPdf } = require('./pdf-report');
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -33,7 +34,22 @@ function loadDb() {
     return seed;
   }
   try {
-    return JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf8'));
+    let changed = false;
+    if (!data.tournament || !Array.isArray(data.tournament.groups)) {
+      data.tournament = buildTournament(data.teams);
+      changed = true;
+    }
+    if (![3, 4].includes(Number(data.tournament.teamsPerGroup))) {
+      data.tournament.teamsPerGroup = 3;
+      changed = true;
+    }
+    if (number(data.tournament.qualifyPerGroup) < 1) {
+      data.tournament.qualifyPerGroup = 2;
+      changed = true;
+    }
+    if (changed) fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+    return data;
   } catch (error) {
     console.error('Data lama tidak bisa dibaca, membuat data baru.', error);
     const seed = createSeed();
@@ -175,7 +191,7 @@ function computeStandings() {
   }]));
 
   const finished = db.matches
-    .filter((match) => match.status === 'finished')
+    .filter((match) => match.status === 'finished' && !match.tournamentId)
     .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
 
   for (const match of finished) {
@@ -220,6 +236,175 @@ function computeStandings() {
   return table.map((row, index) => ({ ...row, rank: index + 1 }));
 }
 
+function roundRobinRounds(teamIds) {
+  const teams = [...teamIds];
+  if (teams.length % 2 !== 0) teams.push(null);
+  const rounds = [];
+  const count = teams.length;
+  if (count < 2) return rounds;
+  for (let round = 0; round < count - 1; round += 1) {
+    const pairs = [];
+    for (let index = 0; index < count / 2; index += 1) {
+      const home = teams[index];
+      const away = teams[count - 1 - index];
+      if (home && away) pairs.push([home, away]);
+    }
+    rounds.push(pairs);
+    const fixed = teams[0];
+    const rest = teams.slice(1);
+    rest.unshift(rest.pop());
+    teams.splice(0, teams.length, fixed, ...rest);
+  }
+  return rounds;
+}
+
+function cardCountsByPlayer(matches) {
+  const counts = new Map();
+  for (const match of matches) {
+    for (const event of match.events || []) {
+      if (!event.playerId || (event.type !== 'yellow' && event.type !== 'red')) continue;
+      const entry = counts.get(event.playerId) || { yellow: 0, red: 0 };
+      if (event.type === 'yellow') entry.yellow += 1;
+      else entry.red += 1;
+      counts.set(event.playerId, entry);
+    }
+  }
+  return counts;
+}
+
+function tournamentLeaders(matches) {
+  const stats = new Map();
+  for (const match of matches) {
+    for (const event of match.events || []) {
+      if (!['goal', 'yellow', 'red'].includes(event.type)) continue;
+      const key = event.playerId || `name:${event.playerName || 'unknown'}`;
+      const player = event.playerId ? db.players.find((item) => item.id === event.playerId) : null;
+      const teamId = event.teamId || (player ? player.teamId : null);
+      const team = teamMap.get(teamId);
+      const entry = stats.get(key) || {
+        playerId: event.playerId || null,
+        name: player ? player.name : event.playerName || 'Tanpa nama',
+        teamName: team ? team.name : 'Tanpa tim',
+        teamId: team ? team.id : null,
+        teamColor: team ? team.color : '#cffF45',
+        photo: player ? player.photo || null : null,
+        goals: 0,
+        yellowCards: 0,
+        redCards: 0
+      };
+      if (event.type === 'goal') entry.goals += 1;
+      if (event.type === 'yellow') entry.yellowCards += 1;
+      if (event.type === 'red') entry.redCards += 1;
+      stats.set(key, entry);
+    }
+  }
+  const rows = [...stats.values()];
+  const ranked = (metric) => rows
+    .filter((row) => row[metric] > 0)
+    .sort((a, b) => b[metric] - a[metric] || a.name.localeCompare(b.name, 'id'))
+    .slice(0, 10);
+  return {
+    scorers: ranked('goals'),
+    yellow: ranked('yellowCards'),
+    red: ranked('redCards')
+  };
+}
+
+function computeTournament() {
+  const tournament = db.tournament;
+  if (!tournament) return null;
+  const tournamentMatches = db.matches.filter((match) => match.tournamentId === tournament.id);
+  const groups = (tournament.groups || []).map((group) => {
+    const matches = tournamentMatches.filter((match) => match.groupId === group.id);
+    const rows = group.teamIds
+      .map((teamId) => teamMap.get(teamId))
+      .filter(Boolean)
+      .map((team) => ({
+        teamId: team.id,
+        name: team.name,
+        short: team.short,
+        color: team.color,
+        color2: team.color2,
+        logo: team.logo || null,
+        played: 0,
+        won: 0,
+        drawn: 0,
+        lost: 0,
+        goalsFor: 0,
+        goalsAgainst: 0,
+        goalDiff: 0,
+        points: 0,
+        yellowCards: 0,
+        redCards: 0
+      }));
+    const rowMap = new Map(rows.map((row) => [row.teamId, row]));
+
+    for (const match of matches) {
+      for (const event of match.events || []) {
+        const row = event.teamId ? rowMap.get(event.teamId) : null;
+        if (!row) continue;
+        if (event.type === 'yellow') row.yellowCards += 1;
+        if (event.type === 'red') row.redCards += 1;
+      }
+    }
+
+    for (const match of matches.filter((item) => item.status === 'finished')) {
+      const home = rowMap.get(match.homeId);
+      const away = rowMap.get(match.awayId);
+      if (!home || !away) continue;
+      const homeScore = number(match.homeScore, 0);
+      const awayScore = number(match.awayScore, 0);
+      home.played += 1;
+      away.played += 1;
+      home.goalsFor += homeScore;
+      home.goalsAgainst += awayScore;
+      away.goalsFor += awayScore;
+      away.goalsAgainst += homeScore;
+      if (homeScore > awayScore) {
+        home.won += 1; home.points += 3;
+        away.lost += 1;
+      } else if (homeScore < awayScore) {
+        away.won += 1; away.points += 3;
+        home.lost += 1;
+      } else {
+        home.drawn += 1; away.drawn += 1;
+        home.points += 1; away.points += 1;
+      }
+    }
+
+    rows.forEach((row) => { row.goalDiff = row.goalsFor - row.goalsAgainst; });
+    rows.sort((a, b) =>
+      b.points - a.points ||
+      b.goalDiff - a.goalDiff ||
+      b.goalsFor - a.goalsFor ||
+      a.name.localeCompare(b.name, 'id')
+    );
+    const standings = rows.map((row, index) => ({
+      ...row,
+      rank: index + 1,
+      qualified: index < number(tournament.qualifyPerGroup, 2)
+    }));
+    return {
+      ...group,
+      standings,
+      emptySlots: Math.max(0, number(tournament.teamsPerGroup, 3) - standings.length),
+      matchCount: matches.length,
+      finishedCount: matches.filter((match) => match.status === 'finished').length
+    };
+  });
+
+  return {
+    ...tournament,
+    groups,
+    groupCount: groups.length,
+    slotTotal: groups.length * number(tournament.teamsPerGroup, 3),
+    slotsFilled: groups.reduce((total, group) => total + group.standings.length, 0),
+    matchCount: tournamentMatches.length,
+    finishedCount: tournamentMatches.filter((match) => match.status === 'finished').length,
+    leaders: tournamentLeaders(tournamentMatches)
+  };
+}
+
 function publicState() {
   const standings = computeStandings();
   const teamLookup = new Map(standings.map((row) => [row.teamId, row]));
@@ -238,9 +423,23 @@ function publicState() {
       teamShort: team ? team.short : 'FA'
     };
   });
+  const cards = cardCountsByPlayer(db.matches);
+  for (const player of players) {
+    const counts = cards.get(player.id) || { yellow: 0, red: 0 };
+    player.yellowCards = counts.yellow;
+    player.redCards = counts.red;
+  }
 
   const scorers = [...players]
     .sort((a, b) => b.goals - a.goals || b.assists - a.assists || a.name.localeCompare(b.name, 'id'))
+    .slice(0, 10);
+  const yellowLeaders = [...players]
+    .filter((player) => player.yellowCards > 0)
+    .sort((a, b) => b.yellowCards - a.yellowCards || b.redCards - a.redCards || a.name.localeCompare(b.name, 'id'))
+    .slice(0, 10);
+  const redLeaders = [...players]
+    .filter((player) => player.redCards > 0)
+    .sort((a, b) => b.redCards - a.redCards || b.yellowCards - a.yellowCards || a.name.localeCompare(b.name, 'id'))
     .slice(0, 10);
 
   const matches = db.matches
@@ -265,8 +464,11 @@ function publicState() {
     players,
     matches,
     mabar,
+    tournament: computeTournament(),
     standings,
     scorers,
+    yellowLeaders,
+    redLeaders,
     online: sseClients.size,
     serverNow: Date.now()
   };
@@ -510,6 +712,47 @@ async function handleApi(req, res, url) {
   const { pathname } = url;
   const method = req.method;
 
+  const teamReportMatch = pathname.match(/^\/api\/teams\/([^/]+)\/report\.pdf$/);
+  if (method === 'GET' && teamReportMatch) {
+    const teamId = decodeURIComponent(teamReportMatch[1]);
+    const team = teamMap.get(teamId);
+    if (!team) throw new HttpError(404, 'Tim tidak ditemukan.');
+    const standings = computeStandings();
+    const standing = standings.find((row) => row.teamId === team.id) || null;
+    const cards = cardCountsByPlayer(db.matches);
+    const players = db.players
+      .filter((player) => player.teamId === team.id)
+      .map((player) => {
+        const counts = cards.get(player.id) || { yellow: 0, red: 0 };
+        return { ...player, yellowCards: counts.yellow, redCards: counts.red };
+      });
+    let tournamentGroup = null;
+    if (db.tournament) {
+      const tournament = computeTournament();
+      const group = tournament
+        ? tournament.groups.find((item) => item.teamIds.includes(team.id))
+        : null;
+      if (group) {
+        const row = group.standings.find((item) => item.teamId === team.id);
+        tournamentGroup = {
+          tournamentName: tournament.name,
+          groupName: group.name,
+          rank: row ? row.rank : null
+        };
+      }
+    }
+    const pdf = buildTeamPdf({ team, standing, players, tournamentGroup });
+    res.writeHead(200, {
+      'Content-Type': 'application/pdf',
+      'Content-Length': pdf.length,
+      'Content-Disposition': `attachment; filename="${team.id}-report.pdf"`,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff'
+    });
+    res.end(pdf);
+    return;
+  }
+
   if (method === 'GET' && pathname === '/api/state') {
     sendJson(res, 200, { ...publicState(), isAdmin: isAdmin(req) });
     return;
@@ -624,6 +867,157 @@ async function handleApi(req, res, url) {
 
   if (pathname.startsWith('/api/admin/')) {
     if (!requireAdmin(req, res)) return;
+  }
+
+  if (method === 'PATCH' && pathname === '/api/admin/tournament') {
+    const body = await readJson(req);
+    const tournament = db.tournament;
+    if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
+    const hasFixtures = db.matches.some((match) => match.tournamentId === tournament.id);
+
+    if (body.name != null) {
+      const name = text(body.name, 80);
+      if (name.length < 3) throw new HttpError(400, 'Nama turnamen minimal 3 karakter.');
+      tournament.name = name;
+    }
+    if (body.status != null) {
+      const status = text(body.status, 20);
+      if (!['upcoming', 'live', 'finished'].includes(status)) throw new HttpError(400, 'Status turnamen tidak valid.');
+      tournament.status = status;
+    }
+    if (body.venue != null) {
+      const venue = text(body.venue, 80);
+      if (venue.length < 3) throw new HttpError(400, 'Nama lapangan minimal 3 karakter.');
+      tournament.venue = venue;
+    }
+    if (body.notes != null) tournament.notes = text(body.notes, 300);
+    if (body.startsAt != null) {
+      const startsAt = new Date(body.startsAt);
+      if (Number.isNaN(startsAt.getTime())) throw new HttpError(400, 'Tanggal mulai tidak valid.');
+      tournament.startsAt = startsAt.toISOString();
+    }
+    if (body.teamsPerGroup != null) {
+      const teamsPerGroup = Math.floor(number(body.teamsPerGroup, 0));
+      if (![3, 4].includes(teamsPerGroup)) throw new HttpError(400, 'Format grup harus 3 atau 4 tim.');
+      if (hasFixtures && teamsPerGroup !== tournament.teamsPerGroup) {
+        throw new HttpError(409, 'Hapus jadwal grup sebelum mengubah format turnamen.');
+      }
+      tournament.teamsPerGroup = teamsPerGroup;
+    }
+
+    if (body.assignments != null) {
+      if (hasFixtures) throw new HttpError(409, 'Hapus jadwal grup sebelum mengubah pembagian grup.');
+      if (typeof body.assignments !== 'object' || Array.isArray(body.assignments)) {
+        throw new HttpError(400, 'Data pembagian grup tidak valid.');
+      }
+      const groupIds = ['A', 'B', 'C', 'D'];
+      const buckets = new Map(groupIds.map((id) => [id, []]));
+      for (const team of db.teams) {
+        const rawGroup = text(body.assignments[team.id], 1).toUpperCase();
+        if (!rawGroup) continue;
+        if (!buckets.has(rawGroup)) throw new HttpError(400, `Grup ${rawGroup} tidak valid.`);
+        buckets.get(rawGroup).push(team.id);
+      }
+      for (const [groupId, teamIds] of buckets) {
+        if (teamIds.length > tournament.teamsPerGroup) {
+          throw new HttpError(400, `Grup ${groupId} maksimal ${tournament.teamsPerGroup} tim.`);
+        }
+      }
+      tournament.groups = groupIds.map((id) => ({
+        id,
+        name: `Grup ${id}`,
+        teamIds: buckets.get(id)
+      }));
+    } else if (tournament.groups.some((group) => group.teamIds.length > tournament.teamsPerGroup)) {
+      throw new HttpError(400, 'Kurangi jumlah tim di grup sebelum memperkecil format.');
+    }
+
+    tournament.updatedAt = new Date().toISOString();
+    persist();
+    broadcast();
+    sendJson(res, 200, { ok: true, tournament: computeTournament() });
+    return;
+  }
+
+  if (method === 'POST' && pathname === '/api/admin/tournament/fixtures') {
+    const tournament = db.tournament;
+    if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
+    if (db.matches.some((match) => match.tournamentId === tournament.id)) {
+      throw new HttpError(409, 'Jadwal grup sudah dibuat.');
+    }
+    const incomplete = tournament.groups.filter((group) => group.teamIds.length !== tournament.teamsPerGroup);
+    if (incomplete.length) {
+      throw new HttpError(400, `Lengkapi semua slot grup dulu (${tournament.groups.map((group) => `${group.id}: ${group.teamIds.length}/${tournament.teamsPerGroup}`).join(', ')}).`);
+    }
+
+    const roundsByGroup = new Map();
+    let maxRounds = 0;
+    for (const group of tournament.groups) {
+      const rounds = roundRobinRounds(group.teamIds);
+      roundsByGroup.set(group.id, rounds);
+      maxRounds = Math.max(maxRounds, rounds.length);
+    }
+    const pairs = [];
+    for (let roundIndex = 0; roundIndex < maxRounds; roundIndex += 1) {
+      for (const group of tournament.groups) {
+        const round = roundsByGroup.get(group.id)[roundIndex] || [];
+        for (const [homeId, awayId] of round) {
+          pairs.push({
+            groupId: group.id,
+            homeId,
+            awayId,
+            matchday: roundIndex + 1
+          });
+        }
+      }
+    }
+    const startMs = (() => {
+      const parsed = Date.parse(tournament.startsAt);
+      if (Number.isFinite(parsed) && parsed > Date.now()) return parsed;
+      const next = new Date();
+      next.setDate(next.getDate() + 1);
+      next.setHours(9, 0, 0, 0);
+      return next.getTime();
+    })();
+    const hourOffsets = [0, 2, 5, 7];
+    const newMatches = pairs.map((pair, index) => ({
+      id: `match-${crypto.randomBytes(4).toString('hex')}`,
+      round: `Fase Grup ${pair.groupId} · MD${pair.matchday}`,
+      tournamentId: tournament.id,
+      groupId: pair.groupId,
+      kickoff: new Date(
+        startMs +
+        Math.floor(index / 4) * 24 * 60 * 60 * 1000 +
+        hourOffsets[index % 4] * 60 * 60 * 1000
+      ).toISOString(),
+      venue: tournament.venue || 'Lapangan Mini Soccer',
+      homeId: pair.homeId,
+      awayId: pair.awayId,
+      homeScore: 0,
+      awayScore: 0,
+      status: 'upcoming',
+      events: []
+    }));
+    db.matches.push(...newMatches);
+    persist();
+    broadcast();
+    sendJson(res, 201, { ok: true, count: newMatches.length, matches: newMatches, tournament: computeTournament() });
+    return;
+  }
+
+  if (method === 'DELETE' && pathname === '/api/admin/tournament/fixtures') {
+    const tournament = db.tournament;
+    if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
+    const fixtures = db.matches.filter((match) => match.tournamentId === tournament.id);
+    if (!fixtures.length) throw new HttpError(404, 'Belum ada jadwal grup.');
+    if (fixtures.some((match) => match.status !== 'upcoming')) {
+      throw new HttpError(409, 'Jadwal grup yang sudah berjalan atau selesai tidak bisa dihapus.');
+    }
+    db.matches = db.matches.filter((match) => match.tournamentId !== tournament.id);
+    persist();
+    broadcast();
+    sendJson(res, 200, { ok: true, count: fixtures.length, tournament: computeTournament() });
+    return;
   }
 
   if (method === 'POST' && pathname === '/api/admin/teams') {
@@ -925,6 +1319,9 @@ async function handleApi(req, res, url) {
     const shirt = Math.floor(number(body.number, 0));
     if (name.length < 2) throw new HttpError(400, 'Nama pemain minimal 2 karakter.');
     if (!teamMap.has(teamId)) throw new HttpError(400, 'Tim tidak valid.');
+    if (db.players.filter((player) => player.teamId === teamId).length >= 30) {
+      throw new HttpError(409, 'Skuad maksimal 30 pemain.');
+    }
     if (!['GK', 'DF', 'MF', 'FW'].includes(position)) throw new HttpError(400, 'Posisi tidak valid.');
     if (shirt < 1 || shirt > 99) throw new HttpError(400, 'Nomor punggung harus 1 sampai 99.');
     const id = `p-${crypto.randomBytes(4).toString('hex')}`;

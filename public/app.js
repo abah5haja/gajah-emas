@@ -30,7 +30,8 @@ const state = {
     playerTeam: '',
     playerSort: 'goals',
     matchFilter: 'all',
-    adminTab: 'live'
+    adminTab: 'live',
+    homeLeader: 'goals'
   },
   modal: null
 };
@@ -129,6 +130,17 @@ function addDaysIso(days) {
 
 function dateInputValue(offsetDays = 1, hour = 19) {
   return `${addDaysIso(offsetDays)}T${pad(hour)}:00`;
+}
+
+function toDateTimeLocalValue(iso) {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return dateInputValue(1, 9);
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false, timeZone: WIB
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value || '00';
+  return `${part('year')}-${part('month')}-${part('day')}T${part('hour')}:${part('minute')}`;
 }
 
 function parseMabarDate(session) {
@@ -284,7 +296,8 @@ const ICON_PATHS = {
   spark: '<path d="m12 3 1.6 5.4L19 10l-5.4 1.6L12 17l-1.6-5.4L5 10l5.4-1.6L12 3Z"/><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/>',
-  camera: '<path d="M4 8h3l1.5-2h7L17 8h3v11H4V8Z"/><circle cx="12" cy="13" r="3.3"/>'
+  camera: '<path d="M4 8h3l1.5-2h7L17 8h3v11H4V8Z"/><circle cx="12" cy="13" r="3.3"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>'
 };
 
 function icon(name, extraClass = '') {
@@ -304,6 +317,7 @@ function brandMark() {
 const NAV_ITEMS = [
   { path: '/', label: 'Beranda', icon: 'home' },
   { path: '/live', label: 'Live', icon: 'live' },
+  { path: '/turnamen', label: 'Turnamen', icon: 'trophy' },
   { path: '/tim', label: 'Tim', icon: 'teams' },
   { path: '/pemain', label: 'Pemain', icon: 'players' },
   { path: '/mabar', label: 'Mabar', icon: 'mabar' }
@@ -381,6 +395,7 @@ function renderFooter() {
         <div>
           <span class="footer-label">Liga</span>
           <a href="/live" data-link>Match center</a>
+          <a href="/turnamen" data-link>Turnamen</a>
           <a href="/tim" data-link>Tim</a>
           <a href="/pemain" data-link>Pemain</a>
         </div>
@@ -455,6 +470,7 @@ function renderPage() {
   let html;
   if (path === '/') html = renderHomePage();
   else if (path === '/live') html = renderLivePage();
+  else if (path === '/turnamen') html = renderTournamentPage();
   else if (path === '/tim') html = renderTeamsPage();
   else if (path === '/pemain') html = renderPlayersPage();
   else if (path === '/mabar') html = renderMabarPage();
@@ -465,6 +481,7 @@ function renderPage() {
   const titles = {
     '/': 'Pertandingan — Mini Soccer Live',
     '/live': 'Match Center — Pertandingan',
+    '/turnamen': 'Turnamen — Pertandingan',
     '/tim': 'Tim — Pertandingan',
     '/pemain': 'Pemain — Pertandingan',
     '/mabar': 'Mabar — Pertandingan',
@@ -664,12 +681,14 @@ function mabarNudge() {
   </a>`;
 }
 
-function renderScorerRow(player, index) {
+function renderScorerRow(player, index, metric = 'goals') {
+  const value = metric === 'goals' ? player.goals : metric === 'yellow' ? player.yellowCards : player.redCards;
+  const label = metric === 'goals' ? 'gol' : metric === 'yellow' ? 'kuning' : 'merah';
   return `<li class="scorer-row">
     <span class="scorer-rank">${pad(index + 1)}</span>
     ${avatar(player, 'md')}
     <span class="scorer-copy"><strong>${esc(player.name)}</strong><span>${esc(player.teamName)} · ${esc(positionLabel(player.position))}</span></span>
-    <span class="scorer-stat"><b>${player.goals}</b><span>gol</span></span>
+    <span class="scorer-stat ${metric !== 'goals' ? `is-${metric}` : ''}"><b>${value}</b><span>${label}</span></span>
   </li>`;
 }
 
@@ -697,6 +716,13 @@ function renderHomePage() {
     }
   });
   const topScorers = state.data.scorers.slice(0, 5);
+  const leaderMode = state.ui.homeLeader || 'goals';
+  const leaderBoard = leaderMode === 'yellow'
+    ? (state.data.yellowLeaders || [])
+    : leaderMode === 'red'
+      ? (state.data.redLeaders || [])
+      : state.data.scorers;
+  const leaderboardRows = leaderBoard.slice(0, 5);
   const nextSession = nextMabarSession();
   const heroMatch = live || upcoming[0];
 
@@ -755,10 +781,17 @@ function renderHomePage() {
   <section class="wrap section home-lower">
     <div class="panel scorers-panel">
       <div class="panel-head">
-        <div><span class="panel-kicker">Papan skor</span><h3>Top scorer</h3></div>
-        <span class="trophy-mark">${icon('trophy')}</span>
+        <div><span class="panel-kicker">Papan skor</span><h3>${leaderMode === 'yellow' ? 'Kartu kuning' : leaderMode === 'red' ? 'Kartu merah' : 'Top scorer'}</h3></div>
+        <span class="trophy-mark">${leaderMode === 'goals' ? icon('trophy') : `<span class="mini-card is-${leaderMode}"></span>`}</span>
       </div>
-      <ol class="scorer-list">${topScorers.map(renderScorerRow).join('')}</ol>
+      <div class="leader-tabs">
+        <button type="button" class="leader-tab ${leaderMode === 'goals' ? 'is-active' : ''}" data-action="home-leader" data-leader="goals">Gol</button>
+        <button type="button" class="leader-tab ${leaderMode === 'yellow' ? 'is-active' : ''}" data-action="home-leader" data-leader="yellow"><span class="mini-card is-yellow"></span>Kuning</button>
+        <button type="button" class="leader-tab ${leaderMode === 'red' ? 'is-active' : ''}" data-action="home-leader" data-leader="red"><span class="mini-card is-red"></span>Merah</button>
+      </div>
+      ${leaderboardRows.length
+        ? `<ol class="scorer-list">${leaderboardRows.map((player, index) => renderScorerRow(player, index, leaderMode)).join('')}</ol>`
+        : `<div class="leader-empty">${leaderMode === 'goals' ? icon('ball') : `<span class="mini-card is-${leaderMode}"></span>`}<span>Belum ada ${leaderMode === 'yellow' ? 'kartu kuning' : leaderMode === 'red' ? 'kartu merah' : 'gol'} tercatat.</span></div>`}
       <a href="/pemain" data-link class="panel-link">Lihat semua pemain ${icon('arrow')}</a>
     </div>
     ${nextSession ? `<a href="/mabar" data-link class="mabar-spotlight">
@@ -951,8 +984,190 @@ function renderLivePage() {
 
 
 /* =========================================================
-   Teams
+   Tournament
    ========================================================= */
+
+function tournamentStatus(status) {
+  const map = {
+    upcoming: { label: 'Rencana', className: 'is-upcoming' },
+    live: { label: 'Berlangsung', className: 'is-live' },
+    finished: { label: 'Selesai', className: 'is-finished' }
+  };
+  return map[status] || map.upcoming;
+}
+
+function renderTournamentGroup(group, tournament) {
+  const standings = group.standings || [];
+  const emptySlots = group.emptySlots || 0;
+  let tableRows = standings.map((row) => `<tr class="${row.qualified ? 'is-qualified' : ''}">
+    <td class="group-rank">${row.qualified ? '<span class="qual-dot"></span>' : ''}${pad(row.rank)}</td>
+    <td class="group-team-cell">${crest(row, 'xs')}<span class="group-team-name">${esc(row.name)}</span></td>
+    <td>${row.played}</td>
+    <td class="hide-mobile">${row.won}</td>
+    <td class="hide-mobile">${row.drawn}</td>
+    <td class="hide-mobile">${row.lost}</td>
+    <td>${row.goalDiff > 0 ? '+' : ''}${row.goalDiff}</td>
+    <td class="group-card-cell">
+      <span class="card-mini is-yellow" title="Kartu kuning">${row.yellowCards}</span>
+      <span class="card-mini is-red" title="Kartu merah">${row.redCards}</span>
+    </td>
+    <td class="group-points">${row.points}</td>
+  </tr>`).join('');
+  if (emptySlots > 0) {
+    tableRows += Array.from({ length: emptySlots }, () => `<tr class="group-empty-row">
+      <td>—</td>
+      <td class="group-team-cell"><span class="empty-team">Menunggu tim</span></td>
+      <td>—</td><td class="hide-mobile">—</td><td class="hide-mobile">—</td><td class="hide-mobile">—</td>
+      <td>—</td><td>—</td><td>—</td>
+    </tr>`).join('');
+  }
+  return `<article class="group-card">
+    <div class="group-card-head">
+      <span class="group-letter">${esc(group.id)}</span>
+      <div class="group-card-copy"><span class="kicker">Fase grup</span><h3>${esc(group.name)}</h3></div>
+      <span class="group-slot-count ${emptySlots ? 'is-incomplete' : ''}">${standings.length}/${tournament.teamsPerGroup} tim</span>
+    </div>
+    <div class="group-table-wrap">
+      <table class="group-table">
+        <thead><tr>
+          <th>#</th><th class="align-left">Tim</th><th>M</th>
+          <th class="hide-mobile">W</th><th class="hide-mobile">D</th><th class="hide-mobile">L</th>
+          <th>SG</th><th title="Kartu kuning / merah">K</th><th>Pts</th>
+        </tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    <div class="group-card-foot"><span class="qual-dot"></span>${tournament.qualifyPerGroup} teratas lolos ke ${tournament.qualifyPerGroup * tournament.groups.length} besar</div>
+  </article>`;
+}
+
+function renderTournamentLeaderCard(title, entries, metric, iconClass, emptyText) {
+  const label = metric === 'goals' ? 'gol' : metric === 'yellowCards' ? 'kuning' : 'merah';
+  return `<div class="tournament-leader-card">
+    <div class="tournament-leader-head">
+      <span class="leader-icon ${iconClass}">${metric === 'goals' ? icon('ball') : '<span class="mini-card is-' + (metric === 'yellowCards' ? 'yellow' : 'red') + '"></span>'}</span>
+      <div><span class="kicker">Posisi</span><h3>${title}</h3></div>
+    </div>
+    ${entries.length ? `<ol class="tournament-leader-list">
+      ${entries.slice(0, 5).map((entry, index) => `<li class="tournament-leader-row">
+        <span class="leader-rank">${pad(index + 1)}</span>
+        ${avatar(entry, 'sm')}
+        <span class="leader-copy"><strong>${esc(entry.name)}</strong><span>${esc(entry.teamName)}</span></span>
+        <span class="leader-value"><b>${entry[metric]}</b><small>${label}</small></span>
+      </li>`).join('')}
+    </ol>` : `<div class="leader-empty">${icon('trophy')}<span>${emptyText}</span></div>`}
+  </div>`;
+}
+
+function renderTournamentFixtures(tournament) {
+  const matches = state.data.matches
+    .filter((match) => match.tournamentId === tournament.id)
+    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+  return `<div class="panel tournament-schedule">
+    <div class="panel-head">
+      <div><span class="panel-kicker">Kalender</span><h2>Jadwal fase grup</h2></div>
+      <span class="tiny-label">${matches.length ? `${matches.length} laga` : 'Belum ada jadwal'}</span>
+    </div>
+    ${matches.length ? `<div class="tournament-fixture-list">
+      ${matches.map((match) => {
+        const score = scoreLine(match);
+        return `<a href="/live" data-link class="tournament-fixture ${match.status === 'live' ? 'is-live' : ''}">
+          <span class="fixture-date"><b>${esc(formatDate(match.kickoff))}</b><small>${esc(formatTime(match.kickoff))} WIB</small></span>
+          <span class="fixture-group">Grup ${esc(match.groupId || '-')}</span>
+          <span class="fixture-teams">
+            <span>${teamDot(match.home)}<span class="fixture-team-name">${esc(match.home.name)}</span><b>${score.home}</b></span>
+            <span>${teamDot(match.away)}<span class="fixture-team-name">${esc(match.away.name)}</span><b>${score.away}</b></span>
+          </span>
+          <span class="fixture-status">${matchStatusPill(match)}</span>
+        </a>`;
+      }).join('')}
+    </div><a href="/live" data-link class="panel-link">Lihat di match center ${icon('arrow')}</a>`
+      : `<div class="tournament-schedule-empty">${icon('calendar')}<div><h3>Jadwal belum dibuat</h3><p>Jadwal grup akan muncul setelah seluruh slot tim terisi dan operator menyusun pertandingan.</p></div></div>`}
+  </div>`;
+}
+
+function renderTournamentPage() {
+  const tournament = state.data.tournament;
+  if (!tournament) {
+    return `<div class="wrap">${emptyState('trophy', 'Turnamen belum disiapkan', 'Rencana fase grup akan tampil di sini.')}</div>`;
+  }
+  const status = tournamentStatus(tournament.status);
+  const groupCount = tournament.groups.length;
+  const complete = tournament.slotsFilled >= tournament.slotTotal;
+  const missing = Math.max(0, tournament.slotTotal - tournament.slotsFilled);
+  const leaders = tournament.leaders || { scorers: [], yellow: [], red: [] };
+  const qualifiedTotal = groupCount * numberOr(tournament.qualifyPerGroup, 2);
+
+  return `${pageHead({
+    eyebrow: 'Rencana turnamen · Fase grup',
+    title: `Empat grup.<br><span class="accent-text">Satu jalur juara.</span>`,
+    description: `${esc(tournament.name)} memakai format ${groupCount} grup × ${tournament.teamsPerGroup} tim. Klasemen grup, kartu, dan raihan gol diperbarui dari pertandingan yang selesai.`,
+    actions: `<span class="event-status ${status.className}">${status.label}</span>
+      ${state.isAdmin ? `<button type="button" class="btn btn-ghost btn-sm" data-action="open-admin-tournament">${icon('trophy')} Atur turnamen</button>` : ''}`
+  })}
+  <section class="wrap tournament-page">
+    <div class="tournament-hero">
+      <div class="tournament-hero-copy">
+        <span class="eyebrow"><span class="eyebrow-mark"></span>${esc(tournament.name)}</span>
+        <h2>${groupCount} grup, ${tournament.teamsPerGroup} tim per grup.</h2>
+        <p>${esc(tournament.notes || 'Fase grup menentukan siapa yang melaju ke babak berikutnya.')}</p>
+        <div class="tournament-facts">
+          <span>${icon('calendar')}${esc(formatKickoff(tournament.startsAt))}</span>
+          <span>${icon('pin')}${esc(tournament.venue)}</span>
+          <span>${icon('users')}${tournament.slotsFilled}/${tournament.slotTotal} slot terisi</span>
+        </div>
+      </div>
+      <div class="tournament-progress-card">
+        <span class="kicker">Slot peserta</span>
+        <strong>${tournament.slotsFilled}<span>/${tournament.slotTotal}</span></strong>
+        <div class="progress-track"><span style="width:${(tournament.slotsFilled / tournament.slotTotal) * 100}%"></span></div>
+        <small class="${complete ? 'is-complete' : ''}">${complete ? 'Semua slot terisi' : `Menunggu ${missing} tim lagi`}</small>
+      </div>
+    </div>
+
+    <ol class="stage-track">
+      <li class="is-current"><span>01</span><div><b>Fase grup</b><small>${groupCount} grup × ${tournament.teamsPerGroup} tim</small></div></li>
+      <li><span>02</span><div><b>${qualifiedTotal} besar</b><small>${tournament.qualifyPerGroup} teratas / grup</small></div></li>
+      <li><span>03</span><div><b>Semifinal</b><small>4 tim</small></div></li>
+      <li><span>04</span><div><b>Final</b><small>2 tim</small></div></li>
+    </ol>
+
+    <div class="section-head tournament-group-heading">
+      <div><span class="kicker">Klasemen grup</span><h2>Posisi setiap grup</h2></div>
+      <span class="qualification-key"><span class="qual-dot"></span>Zona lolos</span>
+    </div>
+    <div class="group-grid">${tournament.groups.map((group) => renderTournamentGroup(group, tournament)).join('')}</div>
+
+    <div class="qualification-panel">
+      <span class="qualification-icon">${icon('trophy')}</span>
+      <div>
+        <span class="kicker">Keterangan lolos</span>
+        <h3>${tournament.qualifyPerGroup} tim teratas dari setiap grup lolos ke babak ${qualifiedTotal} besar.</h3>
+        <p>${qualifiedTotal} tim akan bermain di perempat final. Peringkat ${tournament.qualifyPerGroup + 1}${tournament.teamsPerGroup === 4 ? ' dan 4' : ''} tidak lolos. Klasemen memakai poin, selisih gol, lalu gol memasukkan. Kolom K adalah jumlah kartu kuning dan merah.</p>
+      </div>
+      <div class="qualification-route"><b>${groupCount} × ${tournament.qualifyPerGroup}</b><span>${icon('arrow')}</span><b>${qualifiedTotal} tim</b></div>
+    </div>
+
+    <div class="section-head tournament-stats-heading">
+      <div><span class="kicker">Papan statistik</span><h2>Pencetak gol & kartu</h2></div>
+      <span class="tiny-label">Berdasarkan kejadian pertandingan turnamen</span>
+    </div>
+    <div class="tournament-leaders-grid">
+      ${renderTournamentLeaderCard('Pencetak gol terbanyak', leaders.scorers || [], 'goals', 'is-goal-leader', 'Belum ada gol tercatat.')}
+      ${renderTournamentLeaderCard('Kartu kuning terbanyak', leaders.yellow || [], 'yellowCards', 'is-yellow-leader', 'Belum ada kartu kuning.')}
+      ${renderTournamentLeaderCard('Kartu merah terbanyak', leaders.red || [], 'redCards', 'is-red-leader', 'Belum ada kartu merah.')}
+    </div>
+
+    ${renderTournamentFixtures(tournament)}
+  </section>`;
+}
+
+function numberOr(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+
 
 function renderTeamsPage() {
   const teams = [...state.data.teams].sort((a, b) => (a.standing?.rank || 99) - (b.standing?.rank || 99));
@@ -1015,6 +1230,8 @@ function filteredPlayers() {
   const sort = state.ui.playerSort;
   players.sort((a, b) => {
     if (sort === 'assists') return b.assists - a.assists || b.goals - a.goals;
+    if (sort === 'yellow') return b.yellowCards - a.yellowCards || b.redCards - a.redCards || a.name.localeCompare(b.name, 'id');
+    if (sort === 'red') return b.redCards - a.redCards || b.yellowCards - a.yellowCards || a.name.localeCompare(b.name, 'id');
     if (sort === 'name') return a.name.localeCompare(b.name, 'id');
     if (sort === 'number') return a.number - b.number || a.name.localeCompare(b.name, 'id');
     return b.goals - a.goals || b.assists - a.assists || a.name.localeCompare(b.name, 'id');
@@ -1029,7 +1246,7 @@ function playersTableHtml(players) {
   return `<div class="table-card">
     <table class="players-table">
       <thead><tr>
-        <th>Pemain</th><th>Tim</th><th class="hide-mobile">Main</th><th class="align-right">Gol</th><th class="align-right">Assist</th><th></th>
+        <th>Pemain</th><th>Tim</th><th class="hide-mobile">Main</th><th class="align-right">Gol</th><th class="align-right">Assist</th><th class="align-right card-col">Kartu</th><th></th>
       </tr></thead>
       <tbody>
         ${players.map((player) => `<tr data-action="open-player" data-id="${esc(player.id)}" tabindex="0">
@@ -1043,6 +1260,7 @@ function playersTableHtml(players) {
           <td class="hide-mobile">${player.matches}</td>
           <td class="align-right"><span class="stat-number ${player.goals >= 4 ? 'is-hot' : ''}">${player.goals}</span></td>
           <td class="align-right">${player.assists}</td>
+          <td class="align-right card-col"><span class="player-cards"><span class="card-mini is-yellow" title="Kartu kuning">${player.yellowCards}</span><span class="card-mini is-red" title="Kartu merah">${player.redCards}</span></span></td>
           <td class="row-arrow">${icon('arrow')}</td>
         </tr>`).join('')}
       </tbody>
@@ -1089,6 +1307,8 @@ function renderPlayersPage() {
         <select id="player-sort" aria-label="Urutkan pemain">
           <option value="goals" ${state.ui.playerSort === 'goals' ? 'selected' : ''}>Gol terbanyak</option>
           <option value="assists" ${state.ui.playerSort === 'assists' ? 'selected' : ''}>Assist terbanyak</option>
+          <option value="yellow" ${state.ui.playerSort === 'yellow' ? 'selected' : ''}>Kartu kuning</option>
+          <option value="red" ${state.ui.playerSort === 'red' ? 'selected' : ''}>Kartu merah</option>
           <option value="name" ${state.ui.playerSort === 'name' ? 'selected' : ''}>Nama A–Z</option>
           <option value="number" ${state.ui.playerSort === 'number' ? 'selected' : ''}>Nomor punggung</option>
         </select>
@@ -1335,6 +1555,10 @@ function renderTeamModal(teamId) {
       <span class="rank-badge"><small>Peringkat</small><strong>#${standing ? pad(standing.rank) : '—'}</strong></span>
     </div>
     <div class="modal-body">
+      <div class="team-report-bar">
+        <div><span class="kicker">Laporan tim</span><p>Profil, klasemen, roster, kartu, dan statistik pemain.</p></div>
+        <a class="btn btn-ghost btn-sm" href="/api/teams/${encodeURIComponent(team.id)}/report.pdf" download>${icon('download')} Unduh PDF</a>
+      </div>
       <div class="modal-stat-grid">
         <div><span>Poin</span><strong>${standing ? standing.points : 0}</strong></div>
         <div><span>Main</span><strong>${standing ? standing.played : 0}</strong></div>
@@ -1401,6 +1625,7 @@ function renderPlayerModal(playerId) {
         <div class="profile-fact"><span>Nomor punggung</span><strong>#${player.number}</strong></div>
         <div class="profile-fact"><span>Posisi</span><strong>${esc(positionLabel(player.position))}</strong></div>
         <div class="profile-fact"><span>Kontribusi</span><strong>${player.goals} gol · ${player.assists} assist</strong></div>
+        <div class="profile-fact"><span>Kartu</span><strong class="inline-cards"><span class="card-mini is-yellow">${player.yellowCards}</span><span class="card-mini is-red">${player.redCards}</span></strong></div>
       </div>
       <div class="modal-section-head"><h3>Rekan setim</h3><span class="tiny-label">${esc(team ? team.name : '')}</span></div>
       <div class="teammate-row">
@@ -1773,6 +1998,116 @@ function renderAdminArchive() {
   </div>`;
 }
 
+function renderAdminTournamentSettings() {
+  const tournament = state.data.tournament;
+  if (!tournament) return emptyState('trophy', 'Turnamen belum tersedia', 'Muat ulang server untuk menyiapkan turnamen.');
+  const startsAt = toDateTimeLocalValue(tournament.startsAt);
+  return `<div class="panel admin-form-panel">
+    <div class="panel-head"><div><span class="panel-kicker">Event</span><h3>Pengaturan turnamen</h3></div>${icon('trophy')}</div>
+    <form data-form="admin-tournament-settings" class="stack-form">
+      <div class="form-grid">
+        <label class="field field-span-2"><span>Nama turnamen</span><input name="name" value="${esc(tournament.name)}" minlength="3" maxlength="80" required></label>
+        <label class="field"><span>Status</span><select name="status">
+          <option value="upcoming" ${tournament.status === 'upcoming' ? 'selected' : ''}>Rencana</option>
+          <option value="live" ${tournament.status === 'live' ? 'selected' : ''}>Berlangsung</option>
+          <option value="finished" ${tournament.status === 'finished' ? 'selected' : ''}>Selesai</option>
+        </select></label>
+        <label class="field"><span>Format grup</span><select name="teamsPerGroup" ${tournament.matchCount ? 'disabled' : ''}>
+          <option value="3" ${tournament.teamsPerGroup === 3 ? 'selected' : ''}>4 grup × 3 tim</option>
+          <option value="4" ${tournament.teamsPerGroup === 4 ? 'selected' : ''}>4 grup × 4 tim</option>
+        </select></label>
+        <label class="field"><span>Tanggal mulai (WIB)</span><input name="startsAt" type="datetime-local" value="${esc(startsAt)}" required></label>
+        <label class="field"><span>Lapangan utama</span><input name="venue" value="${esc(tournament.venue)}" maxlength="80" required></label>
+        <label class="field field-span-2"><span>Catatan / aturan</span><textarea name="notes" rows="2" maxlength="300">${esc(tournament.notes)}</textarea></label>
+      </div>
+      ${tournament.matchCount ? '<p class="admin-lock-note">Format grup dikunci karena jadwal sudah dibuat. Hapus jadwal grup untuk mengubahnya.</p>' : ''}
+      <button type="submit" class="btn btn-primary btn-block">${icon('check')} Simpan pengaturan</button>
+    </form>
+  </div>`;
+}
+
+function renderAdminTournamentGroups() {
+  const tournament = state.data.tournament;
+  if (!tournament) return '';
+  const locked = tournament.matchCount > 0;
+  const groupByTeam = new Map();
+  for (const group of tournament.groups) {
+    for (const teamId of group.teamIds) groupByTeam.set(teamId, group.id);
+  }
+  return `<div class="panel admin-form-panel">
+    <div class="panel-head"><div><span class="panel-kicker">Pembagian grup</span><h3>Tim per grup</h3></div><span class="tiny-label">${tournament.slotsFilled}/${tournament.slotTotal}</span></div>
+    <p class="inline-hint">Maksimal ${tournament.teamsPerGroup} tim per grup. Tim yang belum siap biarkan kosong.</p>
+    <div class="admin-group-counts">
+      ${tournament.groups.map((group) => `<span><b>${esc(group.id)}</b>${group.standings.length}/${tournament.teamsPerGroup}</span>`).join('')}
+    </div>
+    <form data-form="admin-tournament-groups">
+      <div class="admin-team-group-list">
+        ${state.data.teams.map((team) => `<div class="admin-team-group-row">
+          ${crest(team, 'xs')}
+          <span class="admin-team-group-name">${esc(team.name)}</span>
+          <select name="group_${esc(team.id)}" ${locked ? 'disabled' : ''} aria-label="Grup untuk ${esc(team.name)}">
+            <option value="" ${!groupByTeam.has(team.id) ? 'selected' : ''}>Belum masuk</option>
+            ${tournament.groups.map((group) => `<option value="${esc(group.id)}" ${groupByTeam.get(team.id) === group.id ? 'selected' : ''}>Grup ${esc(group.id)}</option>`).join('')}
+          </select>
+        </div>`).join('')}
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" ${locked ? 'disabled' : ''}>${icon('check')} Simpan pembagian grup</button>
+    </form>
+    ${locked ? '<p class="admin-lock-note">Pembagian grup dikunci karena jadwal sudah dibuat.</p>' : ''}
+  </div>`;
+}
+
+function renderAdminTournamentFixtures() {
+  const tournament = state.data.tournament;
+  if (!tournament) return '';
+  const fixtures = state.data.matches
+    .filter((match) => match.tournamentId === tournament.id)
+    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
+  const complete = tournament.groups.every((group) => group.standings.length === tournament.teamsPerGroup);
+  const canDelete = fixtures.length > 0 && fixtures.every((match) => match.status === 'upcoming');
+  const missingGroups = tournament.groups
+    .filter((group) => group.standings.length < tournament.teamsPerGroup)
+    .map((group) => `${group.id}: ${group.standings.length}/${tournament.teamsPerGroup}`);
+  return `<div class="panel admin-form-panel">
+    <div class="panel-head"><div><span class="panel-kicker">Jadwal</span><h3>Fase grup</h3></div><span class="tiny-label">${fixtures.length ? `${fixtures.length} laga` : 'Belum dibuat'}</span></div>
+    <div class="fixture-build-state">
+      <span class="fixture-state-icon ${complete ? 'is-ready' : ''}">${icon(complete ? 'check' : 'users')}</span>
+      <div><strong>${complete ? 'Semua grup siap' : 'Slot grup belum lengkap'}</strong><p>${complete ? 'Jadwal round-robin bisa dibuat untuk seluruh grup.' : `Lengkapi slot berikut: ${missingGroups.join(', ')}.`}</p></div>
+    </div>
+    ${fixtures.length ? `<div class="admin-tournament-fixtures">
+      ${fixtures.map((match) => `<div class="admin-tournament-fixture">
+        <span class="admin-fixture-group">${esc(match.groupId)}</span>
+        <span class="admin-fixture-teams">${crest(match.home, 'xs')}<span>${esc(match.home.short)}</span><b>${match.homeScore}–${match.awayScore}</b><span>${esc(match.away.short)}</span>${crest(match.away, 'xs')}</span>
+        <span class="admin-fixture-date">${esc(formatDate(match.kickoff))} · ${esc(formatTime(match.kickoff))}</span>
+        ${matchStatusPill(match)}
+      </div>`).join('')}
+    </div>
+    <button type="button" class="btn btn-danger-soft btn-block" data-action="admin-delete-fixtures" ${canDelete ? '' : 'disabled'}>${icon('trash')} Hapus jadwal grup</button>
+    ${canDelete ? '<p class="admin-lock-note">Hapus jadwal hanya bisa dilakukan selama semua laga masih upcoming dan belum memiliki hasil.</p>' : '<p class="admin-lock-note">Jadwal tidak bisa dihapus karena sudah ada laga live/selesai.</p>'}`
+      : `<button type="button" class="btn btn-primary btn-block" data-action="admin-generate-fixtures" ${complete ? '' : 'disabled'}>${icon('calendar')} Buat jadwal round-robin</button>
+         <p class="admin-lock-note">${complete ? 'Sistem akan membuat semua pertemuan antartim di setiap grup.' : 'Penuhi semua slot grup terlebih dahulu.'}</p>`}
+    <a href="/turnamen" data-link class="panel-link">Lihat halaman turnamen ${icon('arrow')}</a>
+  </div>`;
+}
+
+function renderAdminTournamentTab() {
+  return `<div class="admin-layout">
+    <div class="admin-main">
+      ${renderAdminTournamentSettings()}
+      ${renderAdminTournamentFixtures()}
+    </div>
+    <aside class="admin-side">
+      ${renderAdminTournamentGroups()}
+      <div class="panel admin-note-panel">
+        <span class="summary-icon">${icon('trophy')}</span>
+        <h3>Keterangan lolos</h3>
+        <p>${state.data.tournament ? `${state.data.tournament.qualifyPerGroup} tim teratas dari setiap grup lolos ke babak ${state.data.tournament.qualifyPerGroup * state.data.tournament.groups.length} besar.` : 'Atur turnamen terlebih dahulu.'}</p>
+        <span class="admin-server-state is-online"><span class="online-dot"></span>Klasemen dari laga selesai</span>
+      </div>
+    </aside>
+  </div>`;
+}
+
 function renderAdminDashboard() {
   const activeMatches = state.data.matches
     .filter((match) => match.status === 'live' || match.status === 'upcoming')
@@ -1798,6 +2133,7 @@ function renderAdminDashboard() {
     </div>
     <div class="admin-tabs">
       <button type="button" class="admin-tab ${tab === 'live' ? 'is-active' : ''}" data-action="admin-tab" data-tab="live">${icon('live')} Kontrol live</button>
+      <button type="button" class="admin-tab ${tab === 'tournament' ? 'is-active' : ''}" data-action="admin-tab" data-tab="tournament">${icon('trophy')} Turnamen</button>
       <button type="button" class="admin-tab ${tab === 'teams' ? 'is-active' : ''}" data-action="admin-tab" data-tab="teams">${icon('teams')} Tim & pemain</button>
       <button type="button" class="admin-tab ${tab === 'data' ? 'is-active' : ''}" data-action="admin-tab" data-tab="data">${icon('mabar')} Mabar & arsip</button>
     </div>
@@ -1816,7 +2152,7 @@ function renderAdminDashboard() {
         </div>
         ${renderAdminArchive()}
       </aside>
-    </div>` : tab === 'teams' ? `<div class="admin-layout">
+    </div>` : tab === 'tournament' ? renderAdminTournamentTab() : tab === 'teams' ? `<div class="admin-layout">
       <div class="admin-main">
         ${renderAdminCreateTeam()}
       </div>
@@ -2206,10 +2542,50 @@ async function handleAction(element, event) {
     return;
   }
 
+  if (action === 'home-leader') {
+    event.preventDefault();
+    const leader = element.dataset.leader;
+    state.ui.homeLeader = ['goals', 'yellow', 'red'].includes(leader) ? leader : 'goals';
+    renderPage();
+    return;
+  }
+
   if (action === 'match-filter') {
     event.preventDefault();
     state.ui.matchFilter = element.dataset.filter || 'all';
     renderPage();
+    return;
+  }
+
+  if (action === 'open-admin-tournament') {
+    event.preventDefault();
+    state.ui.adminTab = 'tournament';
+    navigate('/admin');
+    return;
+  }
+
+  if (action === 'admin-generate-fixtures') {
+    event.preventDefault();
+    try {
+      const result = await api('/api/admin/tournament/fixtures', { method: 'POST', body: {} });
+      await refreshState();
+      toast(`${result.count} pertandingan fase grup berhasil dibuat.`);
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+    return;
+  }
+
+  if (action === 'admin-delete-fixtures') {
+    event.preventDefault();
+    if (!window.confirm('Hapus seluruh jadwal fase grup? Hasil pertandingan belum ada, jadi aman untuk disusun ulang.')) return;
+    try {
+      const result = await api('/api/admin/tournament/fixtures', { method: 'DELETE' });
+      await refreshState();
+      toast(`${result.count} jadwal fase grup dihapus.`, 'info');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
     return;
   }
 
@@ -2328,7 +2704,6 @@ async function handleForm(form) {
     busy(submit, true);
     try {
       await api('/api/admin/login', { method: 'POST', body: { pin: String(values.pin || '') } });
-      state.ui.adminTab = 'live';
       await refreshState();
       toast('Mode operator aktif. Selamat bekerja.');
     } catch (error) {
@@ -2436,6 +2811,52 @@ async function handleForm(form) {
       });
       await refreshState();
       toast(values.type === 'goal' ? 'Gol dicatat. Skor diperbarui.' : 'Kejadian dicatat.');
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      busy(submit, false);
+    }
+    return;
+  }
+
+  if (name === 'admin-tournament-settings') {
+    const raw = String(values.startsAt || '');
+    const startsAt = new Date(`${raw}${raw.length === 16 ? ':00' : ''}+07:00`);
+    if (Number.isNaN(startsAt.getTime())) {
+      toast('Tanggal mulai turnamen tidak valid.', 'error');
+      return;
+    }
+    busy(submit, true);
+    try {
+      const body = {
+        name: values.name,
+        status: values.status,
+        startsAt: startsAt.toISOString(),
+        venue: values.venue,
+        notes: values.notes
+      };
+      if (values.teamsPerGroup !== undefined) body.teamsPerGroup = Number(values.teamsPerGroup);
+      await api('/api/admin/tournament', { method: 'PATCH', body });
+      await refreshState();
+      toast('Pengaturan turnamen diperbarui.');
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      busy(submit, false);
+    }
+    return;
+  }
+
+  if (name === 'admin-tournament-groups') {
+    const assignments = {};
+    for (const [key, value] of Object.entries(values)) {
+      if (key.startsWith('group_')) assignments[key.slice(6)] = String(value || '');
+    }
+    busy(submit, true);
+    try {
+      await api('/api/admin/tournament', { method: 'PATCH', body: { assignments } });
+      await refreshState();
+      toast('Pembagian grup disimpan.');
     } catch (error) {
       toast(error.message, 'error');
     } finally {
