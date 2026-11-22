@@ -1414,6 +1414,55 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  if (method === 'POST' && pathname === '/api/admin/tournament/fixtures/manual') {
+    const body = await readJson(req);
+    const tournament = db.tournament;
+    if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');
+    if (tournament.status === 'finished') throw new HttpError(409, 'Turnamen sudah ditutup.');
+    if (tournament.knockout) throw new HttpError(409, 'Hapus fase gugur sebelum menambah laga grup.');
+    const groupId = text(body.groupId, 1).toUpperCase();
+    const group = tournament.groups.find((item) => item.id === groupId);
+    if (!group) throw new HttpError(400, 'Grup tidak valid.');
+    const homeId = text(body.homeId, 60);
+    const awayId = text(body.awayId, 60);
+    if (!group.teamIds.includes(homeId) || !group.teamIds.includes(awayId)) {
+      throw new HttpError(400, `Pilih dua tim yang sudah berada di Grup ${groupId}.`);
+    }
+    if (homeId === awayId) throw new HttpError(400, 'Tim kandang dan tandang harus berbeda.');
+    const kickoffDate = new Date(body.kickoff);
+    if (Number.isNaN(kickoffDate.getTime())) throw new HttpError(400, 'Jadwal tidak valid.');
+    const duplicate = db.matches.some((match) => (
+      match.tournamentId === tournament.id &&
+      match.groupId === groupId &&
+      ((match.homeId === homeId && match.awayId === awayId) || (match.homeId === awayId && match.awayId === homeId))
+    ));
+    if (duplicate) {
+      const homeName = teamMap.get(homeId)?.name || homeId;
+      const awayName = teamMap.get(awayId)?.name || awayId;
+      throw new HttpError(409, `Laga ${homeName} vs ${awayName} di Grup ${groupId} sudah ada.`);
+    }
+    const match = {
+      id: `match-${crypto.randomBytes(4).toString('hex')}`,
+      round: `Fase Grup ${groupId}`,
+      tournamentId: tournament.id,
+      groupId,
+      kickoff: kickoffDate.toISOString(),
+      venue: tournament.venue || teamMap.get(homeId).venue,
+      homeId,
+      awayId,
+      homeScore: 0,
+      awayScore: 0,
+      status: 'upcoming',
+      events: [],
+      manual: true
+    };
+    db.matches.push(match);
+    persist();
+    broadcast();
+    sendJson(res, 201, { ok: true, match });
+    return;
+  }
+
   if (method === 'DELETE' && pathname === '/api/admin/tournament/fixtures') {
     const tournament = db.tournament;
     if (!tournament) throw new HttpError(404, 'Turnamen belum tersedia.');

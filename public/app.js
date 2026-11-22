@@ -1616,6 +1616,8 @@ function renderModal() {
   } else if (type === 'manual-knockout') {
     content = renderManualKnockoutModal();
     wide = true;
+  } else if (type === 'manual-group-match') {
+    content = renderManualGroupMatchModal();
   }
 
   root.modal.innerHTML = content
@@ -1878,6 +1880,69 @@ function renderManualKnockoutModal() {
     </div>
     <p class="form-hint">Laga yang sudah live atau selesai terkunci. Tim yang sudah dipilih di satu laga bisa dipilih lagi di babak berikutnya untuk kebutuhan perencanaan.</p>
   </form>`;
+}
+
+function renderManualGroupMatchModal() {
+  const tournament = state.data.tournament;
+  if (!tournament) return '';
+  const groups = (tournament.groups || [])
+    .map((group) => ({
+      ...group,
+      teams: (group.teamIds || []).map(getTeam).filter(Boolean)
+    }))
+    .filter((group) => group.teams.length >= 2);
+  if (!groups.length) {
+    return `<div class="modal-form">
+      <span class="kicker">Laga fase grup manual</span>
+      <h2 id="modal-title">Grup belum siap.</h2>
+      <p class="modal-lede">Setiap grup membutuhkan minimal dua tim sebelum laga manual bisa dibuat.</p>
+      <div class="modal-actions"><button type="button" class="btn btn-ghost" data-action="close-modal">Tutup</button></div>
+    </div>`;
+  }
+  const initial = groups[0];
+  const startsAt = Date.parse(tournament.startsAt);
+  const kickoff = Number.isFinite(startsAt) && startsAt > Date.now()
+    ? toDateTimeLocalValue(tournament.startsAt)
+    : dateInputValue(1, 19);
+  const teamOptions = (teams, selectedId) => teams.map((team) => `<option value="${esc(team.id)}" ${team.id === selectedId ? 'selected' : ''}>${esc(team.name)}</option>`).join('');
+  return `<form class="modal-form" data-form="admin-create-group-match">
+    <span class="kicker">Laga fase grup manual</span>
+    <h2 id="modal-title">Buat satu laga grup.</h2>
+    <p class="modal-lede">Pilih grup dan dua tim yang sudah terdaftar. Semua nama tim ditampilkan lengkap, bukan kode singkat.</p>
+    <div class="form-grid">
+      <label class="field"><span>Grup</span><select name="groupId" data-group-match-group required>
+        ${groups.map((group) => `<option value="${esc(group.id)}">Grup ${esc(group.id)} · ${group.teams.length} tim</option>`).join('')}
+      </select></label>
+      <label class="field"><span>Kick-off (WIB)</span><input type="datetime-local" name="kickoff" value="${esc(kickoff)}" required></label>
+      <label class="field"><span>Tim kandang</span><select name="homeId" data-group-match-team required>${teamOptions(initial.teams, initial.teams[0].id)}</select></label>
+      <label class="field"><span>Tim tandang</span><select name="awayId" data-group-match-team required>${teamOptions(initial.teams, initial.teams[1].id)}</select></label>
+    </div>
+    <p class="form-hint">Lapangan mengikuti venue turnamen: <b>${esc(tournament.venue)}</b>. Laga langsung masuk jadwal grup dan bisa dikendalikan lewat Kontrol live.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-action="close-modal">Batal</button>
+      <button type="submit" class="btn btn-primary">${icon('plus')} Simpan laga grup</button>
+    </div>
+  </form>`;
+}
+
+function refreshGroupMatchTeams(groupSelect) {
+  const form = groupSelect.closest('form[data-form="admin-create-group-match"]');
+  const tournament = state.data.tournament;
+  if (!form || !tournament) return;
+  const group = (tournament.groups || []).find((item) => item.id === groupSelect.value);
+  if (!group) return;
+  const teams = (group.teamIds || []).map(getTeam).filter(Boolean);
+  const selects = [...form.querySelectorAll('[data-group-match-team]')];
+  const chosen = [];
+  selects.forEach((select) => {
+    const previous = select.value;
+    select.innerHTML = teams.map((team) => `<option value="${esc(team.id)}">${esc(team.name)}</option>`).join('');
+    let selectedId = teams.some((team) => team.id === previous && !chosen.includes(team.id))
+      ? previous
+      : (teams.find((team) => !chosen.includes(team.id))?.id || '');
+    select.value = selectedId;
+    if (selectedId) chosen.push(selectedId);
+  });
 }
 
 function renderCreateMabarModal() {
@@ -2418,11 +2483,13 @@ function renderAdminTournamentFixtures() {
   const complete = tournament.groups.every((group) => group.standings.length === tournament.teamsPerGroup);
   const bracketLocked = Boolean(tournament.knockout);
   const canDelete = !bracketLocked && fixtures.length > 0 && fixtures.every((match) => match.status === 'upcoming');
+  const canManual = !bracketLocked && tournament.groups.some((group) => (group.teamIds || []).length >= 2);
   const missingGroups = tournament.groups
     .filter((group) => group.standings.length < tournament.teamsPerGroup)
     .map((group) => `${group.id}: ${group.standings.length}/${tournament.teamsPerGroup}`);
   return `<div class="panel admin-form-panel">
     <div class="panel-head"><div><span class="panel-kicker">Jadwal</span><h3>Fase grup</h3></div><span class="tiny-label">${fixtures.length ? `${fixtures.length} laga` : 'Belum dibuat'}</span></div>
+    <p class="inline-hint">Susun semua pertemuan sekaligus, atau tambah laga satu per satu dengan nama tim lengkap dan jam sendiri.</p>
     <div class="fixture-build-state">
       <span class="fixture-state-icon ${complete ? 'is-ready' : ''}">${icon(complete ? 'check' : 'users')}</span>
       <div><strong>${complete ? 'Semua grup siap' : 'Slot grup belum lengkap'}</strong><p>${complete ? 'Jadwal round-robin bisa dibuat untuk seluruh grup.' : `Lengkapi slot berikut: ${missingGroups.join(', ')}.`}</p></div>
@@ -2430,15 +2497,21 @@ function renderAdminTournamentFixtures() {
     ${fixtures.length ? `<div class="admin-tournament-fixtures">
       ${fixtures.map((match) => `<div class="admin-tournament-fixture">
         <span class="admin-fixture-group">${esc(match.groupId)}</span>
-        <span class="admin-fixture-teams">${crest(match.home, 'xs')}<span>${esc(match.home.short)}</span><b>${match.homeScore}–${match.awayScore}</b><span>${esc(match.away.short)}</span>${crest(match.away, 'xs')}</span>
+        <span class="admin-fixture-teams">${crest(match.home, 'xs')}<span class="admin-fixture-team is-home" title="${esc(match.home.name || match.home.short)}">${esc(match.home.name || match.home.short)}</span><b>${match.homeScore}–${match.awayScore}</b><span class="admin-fixture-team is-away" title="${esc(match.away.name || match.away.short)}">${esc(match.away.name || match.away.short)}</span>${crest(match.away, 'xs')}</span>
         <span class="admin-fixture-date">${esc(formatDate(match.kickoff))} · ${esc(formatTime(match.kickoff))}</span>
         ${matchStatusPill(match)}
       </div>`).join('')}
     </div>
-    <button type="button" class="btn btn-danger-soft btn-block" data-action="admin-delete-fixtures" ${canDelete ? '' : 'disabled'}>${icon('trash')} Hapus jadwal grup</button>
+    <div class="fixture-action-grid">
+      <button type="button" class="btn btn-ghost" data-action="open-manual-group-match" ${canManual ? '' : 'disabled'}>${icon('plus')} Laga manual</button>
+      <button type="button" class="btn btn-danger-soft" data-action="admin-delete-fixtures" ${canDelete ? '' : 'disabled'}>${icon('trash')} Hapus semua jadwal</button>
+    </div>
     ${canDelete ? '<p class="admin-lock-note">Hapus jadwal hanya bisa dilakukan selama semua laga masih upcoming dan belum memiliki hasil.</p>' : bracketLocked ? '<p class="admin-lock-note">Jadwal grup dikunci karena fase gugur sudah dibuat. Hapus fase gugur terlebih dahulu.</p>' : '<p class="admin-lock-note">Jadwal tidak bisa dihapus karena sudah ada laga live/selesai.</p>'}`
-      : `<button type="button" class="btn btn-primary btn-block" data-action="admin-generate-fixtures" ${complete && !bracketLocked ? '' : 'disabled'}>${icon('calendar')} Buat jadwal round-robin</button>
-         <p class="admin-lock-note">${bracketLocked ? 'Hapus fase gugur sebelum membuat ulang jadwal grup.' : complete ? 'Sistem akan membuat semua pertemuan antartim di setiap grup.' : 'Penuhi semua slot grup terlebih dahulu.'}</p>`}
+      : `<div class="fixture-action-grid">
+        <button type="button" class="btn btn-primary" data-action="admin-generate-fixtures" ${complete && !bracketLocked ? '' : 'disabled'}>${icon('calendar')} Buat round-robin</button>
+        <button type="button" class="btn btn-ghost" data-action="open-manual-group-match" ${canManual ? '' : 'disabled'}>${icon('plus')} Laga manual</button>
+      </div>
+      <p class="admin-lock-note">${bracketLocked ? 'Hapus fase gugur sebelum membuat jadwal grup.' : complete ? 'Round-robin membuat semua pertemuan antartim; laga manual dibuat satu per satu.' : 'Penuhi semua slot grup untuk round-robin, atau tambahkan laga manual dari grup yang sudah punya dua tim.'}</p>`}
     <a href="/turnamen" data-link class="panel-link">Lihat halaman turnamen ${icon('arrow')}</a>
   </div>`;
 }
@@ -2962,7 +3035,7 @@ async function handleAction(element, event) {
       });
       closeModal();
       await refreshState();
-      toast(`${match ? `${match.home.short} vs ${match.away.short}` : 'Pertandingan'} ditambahkan ke kontrol.`);
+      toast(`${match ? `${match.home.name} vs ${match.away.name}` : 'Pertandingan'} ditambahkan ke kontrol.`);
     } catch (error) {
       toast(error.message, 'error');
     }
@@ -2978,7 +3051,7 @@ async function handleAction(element, event) {
         body: { control: false }
       });
       await refreshState();
-      toast(`${match ? `${match.home.short} vs ${match.away.short}` : 'Pertandingan'} dikeluarkan dari kontrol.`, 'info');
+      toast(`${match ? `${match.home.name} vs ${match.away.name}` : 'Pertandingan'} dikeluarkan dari kontrol.`, 'info');
     } catch (error) {
       toast(error.message, 'error');
     }
@@ -3000,6 +3073,12 @@ async function handleAction(element, event) {
   if (action === 'open-manual-knockout') {
     event.preventDefault();
     openModal('manual-knockout');
+    return;
+  }
+
+  if (action === 'open-manual-group-match') {
+    event.preventDefault();
+    openModal('manual-group-match');
     return;
   }
 
@@ -3422,6 +3501,41 @@ async function handleForm(form) {
     return;
   }
 
+  if (name === 'admin-create-group-match') {
+    const raw = String(values.kickoff || '');
+    const kickoff = new Date(`${raw}${raw.length === 16 ? ':00' : ''}+07:00`);
+    if (Number.isNaN(kickoff.getTime())) {
+      toast('Tanggal dan jam kick-off tidak valid.', 'error');
+      return;
+    }
+    if (values.homeId === values.awayId) {
+      toast('Tim kandang dan tandang harus berbeda.', 'error');
+      return;
+    }
+    busy(submit, true);
+    try {
+      const result = await api('/api/admin/tournament/fixtures/manual', {
+        method: 'POST',
+        body: {
+          groupId: values.groupId,
+          homeId: values.homeId,
+          awayId: values.awayId,
+          kickoff: kickoff.toISOString()
+        }
+      });
+      const home = getTeam(result.match.homeId);
+      const away = getTeam(result.match.awayId);
+      closeModal();
+      await refreshState();
+      toast(`Laga Grup ${result.match.groupId}: ${home ? home.name : 'Tim kandang'} vs ${away ? away.name : 'Tim tandang'} ditambahkan.`);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      busy(submit, false);
+    }
+    return;
+  }
+
   if (name === 'admin-create-team') {
     const rosterRows = [...form.querySelectorAll('.roster-input-row')];
     const players = rosterRows.map((row) => ({
@@ -3595,6 +3709,9 @@ document.addEventListener('change', (event) => {
   }
   if (event.target.classList.contains('roster-photo-input')) {
     handleRosterPhotoInput(event.target).catch((error) => toast(error.message, 'error'));
+  }
+  if (event.target.matches('[data-group-match-group]')) {
+    refreshGroupMatchTeams(event.target);
   }
 });
 

@@ -20,7 +20,7 @@ Tidak ada proses build. Semua aset ada di `public/`, data tersimpan di `data/db.
 ## Fitur
 
 - **Live score** — pertandingan berdurasi **2 × 15 menit**. Operator menambah skor, mencatat gol/kartu/pergantian, mengatur menit, menjeda jam, dan menutup pertandingan. Panel kontrol hanya menampilkan laga live dan laga yang dipilih lewat **Tambah dari jadwal**; semua layar diperbarui otomatis lewat Server-Sent Events (SSE).
-- **Turnamen fase grup** — halaman `/turnamen` menampilkan 4 grup dengan format 3 atau 4 tim per grup, klasemen lengkap (main, menang, seri, kalah, selisih gol, kartu, poin), penanda zona lolos, dan keterangan bahwa 2 tim teratas setiap grup maju ke babak 8 besar. Operator dapat mengklik slot kosong di kartu Grup A–D untuk memasukkan tim; tim yang sudah masuk grup tidak muncul lagi di pilihan.
+- **Turnamen fase grup** — halaman `/turnamen` menampilkan 4 grup dengan format 3 atau 4 tim per grup, klasemen lengkap (main, menang, seri, kalah, selisih gol, kartu, poin), penanda zona lolos, dan keterangan bahwa 2 tim teratas setiap grup maju ke babak 8 besar. Operator dapat mengklik slot kosong di kartu Grup A–D untuk memasukkan tim; tim yang sudah masuk grup tidak muncul lagi di pilihan. Jadwal grup bisa dibuat otomatis sebagai round-robin atau ditambah satu per satu lewat **Laga manual**, dengan nama tim lengkap dan jam sendiri.
 - **Fase gugur otomatis/manual** — setelah fase grup selesai, operator bisa memilih bracket otomatis dari klasemen atau mengisi manual. Mencakup 8 besar, semifinal, perebutan juara 3, final, serta podium juara 1–4. Nama tim dan jam setiap laga bisa diatur pada mode manual; pemenang otomatis maju pada mode otomatis.
 - **Papan kartu & gol** — posisi pencetak gol terbanyak, kartu kuning terbanyak, dan kartu merah terbanyak tersedia di beranda serta halaman turnamen. Jumlah kartu juga tampil di direktori pemain, profil, klasemen grup, dan laporan PDF.
 - **Match center** — skor live, jalannya pertandingan, statistik duel, jadwal, hasil, dan arsip semua laga yang dikelompokkan per tanggal.
@@ -38,7 +38,7 @@ Tidak ada proses build. Semua aset ada di `public/`, data tersimpan di `data/db.
 3. Atur status menjadi **Live** untuk memulai jam 2 × 15 menit, dan **Full time** saat selesai. Laga fase gugur tidak boleh berakhir seri.
 4. Tab **Tim & pemain** untuk menginput tim baru, logo, serta nama dan foto pemain di **Skuad awal**. Tambah pemain berikutnya lewat panel **Tambah pemain ke skuad**.
 5. Di profil pemain, operator juga bisa **Upload foto**, **Ganti foto**, atau **Hapus foto**.
-6. Tab **Turnamen** menampilkan urutan **Pengaturan turnamen → Pembagian grup → Jadwal fase grup → Fase gugur**. Isi semua slot grup, lalu buat jadwal round-robin.
+6. Tab **Turnamen** menampilkan urutan **Pengaturan turnamen → Pembagian grup → Jadwal fase grup → Fase gugur**. Isi semua slot grup, lalu buat jadwal round-robin atau tambah laga grup satu per satu lewat **Laga manual** (nama tim lengkap dan jam sendiri).
 7. Setelah semua laga grup selesai, pilih **Isi otomatis** untuk bracket dari klasemen atau **Isi manual** untuk mengisi tim dan jam 8 besar hingga final. Pemenang dicatat lewat Kontrol live.
 8. Setelah final dan perebutan juara 3 selesai, klik **Tutup & selesaikan turnamen**. Panel **Buat turnamen baru** akan muncul; event lama otomatis masuk **Riwayat turnamen**.
 9. Semua penonton menerima pembaruan tanpa refresh.
