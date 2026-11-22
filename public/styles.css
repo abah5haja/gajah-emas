@@ -1033,29 +1033,75 @@ table { border-collapse: collapse; }
 .leader-value b { font-family: var(--font-display); color: var(--accent); font-size: 17px; letter-spacing: -.03em; }
 .leader-value small { color: var(--muted-2); font-size: 7px; }
 .tournament-leader-card .leader-empty { min-height: 110px; }
-.tournament-schedule { padding: 23px; margin-top: 24px; }
-.tournament-schedule .panel-head { margin-bottom: 13px; }
-.tournament-fixture-list { display: flex; flex-direction: column; }
-.tournament-fixture {
-  display: grid; grid-template-columns: 88px 64px minmax(0, 1fr) 64px; gap: 13px; align-items: center;
-  padding: 9px 6px; border-bottom: 1px solid rgba(236,245,229,.05); border-radius: 8px; transition: background .17s;
+.tournament-calendar-section { margin-top: 30px; scroll-margin-top: 88px; }
+.tournament-calendar-heading { align-items: flex-end; margin-bottom: 16px; }
+.tournament-calendar-copy p { color: var(--muted); font-size: 10.5px; line-height: 1.55; max-width: 560px; margin-top: 7px; }
+.tournament-stage-filter { min-width: 215px; flex: 0 0 auto; }
+.tournament-calendar { overflow: hidden; }
+.calendar-day + .calendar-day { border-top: 1px solid var(--line); }
+.calendar-day-head { display: flex; align-items: center; gap: 11px; padding: 14px 20px; background: rgba(255,255,255,.018); }
+.calendar-day.is-today .calendar-day-head { background: linear-gradient(90deg, rgba(207,255,69,.08), rgba(207,255,69,0)); }
+.calendar-day-number {
+  display: inline-flex; align-items: center; justify-content: center; width: 38px; height: 38px; flex: 0 0 auto;
+  border: 1px solid var(--line-strong); border-radius: 10px; background: rgba(255,255,255,.025);
+  color: var(--text); font-family: var(--font-display); font-size: 15px; letter-spacing: -.03em;
 }
-.tournament-fixture:last-child { border-bottom: 0; }
-.tournament-fixture:hover { background: rgba(255,255,255,.025); }
-.fixture-date { display: flex; flex-direction: column; gap: 2px; }
-.fixture-date b { color: var(--muted); font-size: 9px; font-weight: 600; }
-.fixture-date small { color: var(--muted-2); font-size: 8px; }
-.fixture-group { display: inline-flex; justify-content: center; padding: 4px 5px; border: 1px solid var(--line); border-radius: 5px; color: var(--accent); font-size: 8px; font-weight: 600; white-space: nowrap; }
-.fixture-teams { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.fixture-teams > span { display: flex; align-items: center; gap: 7px; font-size: 10px; color: var(--muted); }
-.fixture-team-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fixture-teams b { margin-left: auto; color: var(--text); font-family: var(--font-display); font-size: 11px; }
-.fixture-status { justify-self: end; }
-.tournament-fixture.is-live { background: rgba(207,255,69,.035); }
-.tournament-schedule-empty { display: flex; align-items: center; gap: 12px; padding: 24px 8px; color: var(--muted-2); }
-.tournament-schedule-empty > .icon { width: 24px; height: 24px; color: var(--muted-2); flex: 0 0 auto; }
-.tournament-schedule-empty h3 { color: var(--text); font-family: var(--font-display); font-size: 15px; letter-spacing: -.02em; margin-bottom: 3px; }
-.tournament-schedule-empty p { font-size: 9px; max-width: 500px; }
+.calendar-day.is-today .calendar-day-number { background: var(--accent); border-color: transparent; color: var(--accent-ink); }
+.calendar-day-copy { display: flex; flex-direction: column; gap: 2px; }
+.calendar-day-copy strong { font-size: 11px; font-weight: 600; }
+.calendar-day-copy span { color: var(--muted-2); font-size: 8px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }
+.calendar-day-list { display: flex; flex-direction: column; }
+.calendar-fixture {
+  display: grid; grid-template-columns: 52px minmax(0,1fr) 52px minmax(0,1fr) minmax(130px,.75fr);
+  gap: 12px; align-items: center; padding: 11px 20px; border-top: 1px solid var(--line);
+  transition: background .17s ease;
+}
+.calendar-fixture:hover { background: rgba(255,255,255,.025); }
+.calendar-fixture.is-live { background: rgba(207,255,69,.035); }
+.calendar-fixture.is-live:hover { background: rgba(207,255,69,.055); }
+.calendar-fixture.is-tbd { color: var(--muted); }
+.calendar-time { display: flex; flex-direction: column; gap: 3px; }
+.calendar-time b { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.calendar-time small { display: inline-flex; align-items: center; gap: 4px; color: var(--muted-2); font-size: 7.5px; font-weight: 700; letter-spacing: .08em; }
+.calendar-fixture.is-live .calendar-time small { color: var(--danger); }
+.calendar-team { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 11px; font-weight: 600; }
+.calendar-team.is-home { justify-content: flex-start; text-align: left; }
+.calendar-team .crest { width: 22px; height: 25px; font-size: 6px; flex: 0 0 auto; }
+.calendar-team-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-tbd-crest {
+  display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 25px; flex: 0 0 auto;
+  border: 1px dashed var(--line-strong); border-radius: 6px; color: var(--muted-2); font-size: 9px;
+}
+.calendar-score { display: flex; justify-content: center; align-items: center; min-width: 0; }
+.calendar-score-value { display: flex; align-items: center; gap: 4px; font-family: var(--font-display); }
+.calendar-score-value b { font-size: 17px; letter-spacing: -.02em; }
+.calendar-score-value span { color: var(--muted-2); font-size: 10px; }
+.calendar-fixture.is-live .calendar-score-value b { color: var(--accent); }
+.calendar-vs {
+  display: inline-flex; align-items: center; justify-content: center; height: 24px; min-width: 34px; padding: 0 8px;
+  border: 1px solid var(--line); border-radius: 999px; color: var(--muted-2);
+  font-size: 8px; font-weight: 700; letter-spacing: .08em;
+}
+.calendar-detail { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; min-width: 0; text-align: right; }
+.calendar-stage {
+  display: inline-flex; align-items: center; gap: 5px; max-width: 100%;
+  color: var(--accent); font-size: 8px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.calendar-stage em { color: var(--muted-2); font-style: normal; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.calendar-stage em::before { content: "·"; margin-right: 3px; }
+.calendar-venue { display: flex; align-items: center; gap: 4px; max-width: 100%; color: var(--muted-2); font-size: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.calendar-venue .icon { width: 10px; height: 10px; flex: 0 0 auto; }
+.calendar-venue span { overflow: hidden; text-overflow: ellipsis; }
+.calendar-future-note {
+  display: flex; align-items: flex-start; gap: 10px; margin: 14px 20px 18px; padding: 12px 14px;
+  border: 1px dashed var(--line-strong); border-radius: 12px; background: rgba(255,255,255,.018);
+}
+.calendar-future-icon { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; flex: 0 0 auto; border-radius: 9px; background: var(--accent-soft); color: var(--accent); }
+.calendar-future-icon .icon { width: 15px; height: 15px; }
+.calendar-future-note strong { display: block; font-size: 10px; font-weight: 600; }
+.calendar-future-note p { color: var(--muted-2); font-size: 8.5px; line-height: 1.5; margin-top: 2px; }
+.tournament-calendar .empty-state { padding: 38px 20px; }
 
 /* Team PDF bar */
 .team-report-bar { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 2px 0 15px; margin-bottom: 16px; border-bottom: 1px solid var(--line); }
@@ -2256,10 +2302,16 @@ html[data-theme="light"] .tournament-leader-head,
 html[data-theme="light"] .tournament-leader-row { border-color: var(--line); }
 html[data-theme="light"] .leader-tabs { background: rgba(17,22,13,.025); }
 html[data-theme="light"] .leader-tab.is-active { color: var(--accent-ink); }
-html[data-theme="light"] .tournament-fixture { border-color: var(--line); }
-html[data-theme="light"] .tournament-fixture:hover { background: rgba(17,22,13,.028); }
-html[data-theme="light"] .tournament-fixture.is-live { background: rgba(109,159,0,.055); }
-html[data-theme="light"] .fixture-group { border-color: rgba(109,159,0,.2); color: #557e00; }
+html[data-theme="light"] .tournament-calendar { border-color: var(--line); }
+html[data-theme="light"] .calendar-day-head { background: rgba(17,22,13,.025); }
+html[data-theme="light"] .calendar-day.is-today .calendar-day-head { background: linear-gradient(90deg, rgba(109,159,0,.1), rgba(109,159,0,0)); }
+html[data-theme="light"] .calendar-fixture { border-color: var(--line); }
+html[data-theme="light"] .calendar-fixture:hover { background: rgba(17,22,13,.028); }
+html[data-theme="light"] .calendar-fixture.is-live { background: rgba(109,159,0,.055); }
+html[data-theme="light"] .calendar-fixture.is-live:hover { background: rgba(109,159,0,.08); }
+html[data-theme="light"] .calendar-vs { border-color: var(--line); }
+html[data-theme="light"] .calendar-stage { color: #557e00; }
+html[data-theme="light"] .calendar-future-note { background: rgba(17,22,13,.02); border-color: var(--line-strong); }
 html[data-theme="light"] .team-report-bar { border-color: var(--line); }
 html[data-theme="light"] .admin-lock-note { background: rgba(163,106,0,.06); border-left-color: rgba(163,106,0,.4); }
 html[data-theme="light"] .admin-team-group-row { border-color: var(--line); }
@@ -2286,12 +2338,25 @@ html[data-theme="light"] .player-cards .card-mini.is-red { color: #2b0406; }
   .qualification-panel { grid-template-columns: 34px minmax(0, 1fr); align-items: start; padding: 15px; }
   .qualification-route { grid-column: 2; margin-top: 4px; }
   .tournament-leaders-grid { grid-template-columns: 1fr; }
-  .tournament-schedule { padding: 17px; }
-  .tournament-fixture { grid-template-columns: 1fr auto; gap: 6px 10px; padding: 10px 3px; }
-  .fixture-date { grid-column: 1; grid-row: 1; flex-direction: row; align-items: baseline; gap: 5px; }
-  .fixture-group { grid-column: 1; grid-row: 2; justify-self: start; }
-  .fixture-status { grid-column: 2; grid-row: 1; }
-  .fixture-teams { grid-column: 1 / -1; grid-row: 3; }
+  .tournament-calendar-section { margin-top: 23px; }
+  .tournament-calendar-heading .sort-box { width: 100%; justify-content: space-between; }
+  .tournament-stage-filter { min-width: 0; }
+  .calendar-day-head { padding: 12px 14px; }
+  .calendar-fixture {
+    grid-template-columns: 46px minmax(0,1fr) 52px;
+    grid-template-areas: "time home score" "time away score" "detail detail detail";
+    gap: 4px 10px; padding: 12px 14px;
+  }
+  .calendar-time { grid-area: time; align-self: start; }
+  .calendar-team.is-home { grid-area: home; justify-content: flex-start; text-align: left; }
+  .calendar-team.is-away { grid-area: away; }
+  .calendar-score { grid-area: score; align-self: center; }
+  .calendar-detail {
+    grid-area: detail; flex-direction: row; align-items: center; justify-content: space-between;
+    gap: 8px; padding-top: 6px; margin-top: 3px; border-top: 1px solid var(--line); text-align: left;
+  }
+  .calendar-venue { max-width: 55%; }
+  .calendar-future-note { margin: 12px 14px 15px; }
   .team-report-bar { flex-direction: column; align-items: flex-start; gap: 10px; }
   .team-report-bar .btn { width: 100%; }
   .player-profile-grid { grid-template-columns: 1fr 1fr; }
@@ -2343,7 +2408,6 @@ html[data-theme="light"] .player-cards .card-mini.is-red { color: #2b0406; }
   .leader-tabs { width: 100%; }
   .leader-tab { flex: 1; justify-content: center; }
   .qualification-panel h3 { font-size: 15px; }
-  .tournament-schedule-empty { align-items: flex-start; }
   .mobile-link { font-size: 8px; }
   .mobile-link .icon { width: 18px; height: 18px; }
   .admin-tab .icon { display: none; }

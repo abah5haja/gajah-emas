@@ -30,6 +30,7 @@ const state = {
     playerTeam: '',
     playerSort: 'goals',
     matchFilter: 'all',
+    tournamentStage: 'all',
     adminTab: 'live',
     homeLeader: 'goals'
   },
@@ -1168,31 +1169,139 @@ function renderTournamentKnockout(tournament) {
   </div>`;
 }
 
-function renderTournamentFixtures(tournament) {
-  const matches = state.data.matches
+const TOURNAMENT_CALENDAR_STAGES = [
+  { key: 'group', label: 'Fase grup' },
+  { key: 'quarterfinal', label: '8 besar' },
+  { key: 'semifinal', label: 'Semifinal' },
+  { key: 'third', label: 'Juara 3' },
+  { key: 'final', label: 'Final' }
+];
+
+function tournamentCalendarEntries(tournament) {
+  const entries = state.data.matches
     .filter((match) => match.tournamentId === tournament.id && match.groupId)
-    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff));
-  return `<div class="panel tournament-schedule">
-    <div class="panel-head">
-      <div><span class="panel-kicker">Kalender</span><h2>Jadwal fase grup</h2></div>
-      <span class="tiny-label">${matches.length ? `${matches.length} laga` : 'Belum ada jadwal'}</span>
+    .map((match) => ({
+      key: match.id,
+      kickoff: match.kickoff,
+      stage: 'group',
+      stageLabel: `Grup ${match.groupId || '-'}`,
+      stageDetail: (String(match.round || '').match(/MD\d+/) || [])[0] || '',
+      home: match.home,
+      away: match.away,
+      homeScore: match.homeScore,
+      awayScore: match.awayScore,
+      status: match.status,
+      minute: match.minute,
+      venue: match.venue || tournament.venue,
+      match
+    }));
+
+  const knockout = tournament.knockout;
+  if (knockout) {
+    for (const slot of knockout.slots || []) {
+      const match = slot.match;
+      entries.push({
+        key: match ? `match-${match.id}` : `slot-${slot.id}`,
+        kickoff: (match && match.kickoff) || slot.kickoff,
+        stage: slot.stage,
+        stageLabel: slot.label,
+        stageDetail: '',
+        home: slot.home,
+        away: slot.away,
+        homeScore: match ? match.homeScore : 0,
+        awayScore: match ? match.awayScore : 0,
+        status: match ? match.status : 'scheduled',
+        minute: match ? match.minute : 0,
+        venue: (match && match.venue) || tournament.venue,
+        match
+      });
+    }
+  }
+
+  return entries
+    .filter((entry) => Number.isFinite(Date.parse(entry.kickoff)))
+    .sort((a, b) => new Date(a.kickoff) - new Date(b.kickoff) || a.key.localeCompare(b.key));
+}
+
+function renderCalendarFixture(entry) {
+  const showScore = entry.status === 'live' || entry.status === 'finished';
+  const tbd = !entry.home || !entry.away;
+  const statusText = entry.status === 'live'
+    ? '<span class="live-dot"></span>LIVE'
+    : entry.status === 'finished' ? 'FT' : 'WIB';
+  const score = showScore
+    ? `<span class="calendar-score-value"><b>${entry.homeScore}</b><span>–</span><b>${entry.awayScore}</b></span>`
+    : '<span class="calendar-vs">VS</span>';
+  const team = (side, value) => `<span class="calendar-team is-${side}">
+    ${value ? crest(value, 'xs') : '<span class="calendar-tbd-crest">?</span>'}
+    <span class="calendar-team-name" title="${esc(value ? value.name : 'TBD')}">${esc(value ? value.name : 'TBD')}</span>
+  </span>`;
+  const content = `
+    <span class="calendar-time"><b>${esc(formatTime(entry.kickoff))}</b><small>${statusText}</small></span>
+    ${team('home', entry.home)}
+    <span class="calendar-score ${showScore ? 'has-score' : ''}">${score}</span>
+    ${team('away', entry.away)}
+    <span class="calendar-detail">
+      <span class="calendar-stage">${esc(entry.stageLabel)}${entry.stageDetail ? `<em>${esc(entry.stageDetail)}</em>` : ''}</span>
+      <span class="calendar-venue">${icon('pin')}<span>${esc(entry.venue || 'Lapangan Mini Soccer')}</span></span>
+    </span>`;
+  const classes = `calendar-fixture is-${entry.status}${tbd ? ' is-tbd' : ''}`;
+  return entry.match
+    ? `<a href="/live" data-link class="${classes}">${content}</a>`
+    : `<div class="${classes}">${content}</div>`;
+}
+
+function renderTournamentCalendar(tournament) {
+  const entries = tournamentCalendarEntries(tournament);
+  const counts = entries.reduce((result, entry) => {
+    result[entry.stage] = (result[entry.stage] || 0) + 1;
+    return result;
+  }, {});
+  const requestedStage = state.ui.tournamentStage || 'all';
+  const activeStage = requestedStage === 'all' || counts[requestedStage] ? requestedStage : 'all';
+  if (activeStage !== requestedStage) state.ui.tournamentStage = activeStage;
+  const filtered = activeStage === 'all' ? entries : entries.filter((entry) => entry.stage === activeStage);
+  const dateGroups = new Map();
+  for (const entry of filtered) {
+    const key = isoDay(new Date(entry.kickoff));
+    if (!dateGroups.has(key)) dateGroups.set(key, []);
+    dateGroups.get(key).push(entry);
+  }
+  const today = todayIso();
+  const stageOptions = TOURNAMENT_CALENDAR_STAGES.map((stage) => `<option value="${stage.key}" ${activeStage === stage.key ? 'selected' : ''} ${counts[stage.key] ? '' : 'disabled'}>${stage.label} (${counts[stage.key] || 0})</option>`).join('');
+
+  return `<section class="tournament-calendar-section" id="kalender">
+    <div class="section-head tournament-calendar-heading">
+      <div class="tournament-calendar-copy">
+        <span class="kicker">Kalender pertandingan</span>
+        <h2>Fase grup sampai final</h2>
+        <p>Semua laga turnamen dalam satu kalender: tanggal, jam, tim lengkap, dan lapangan.</p>
+      </div>
+      <label class="sort-box tournament-stage-filter">
+        <span>Fase</span>
+        <select id="tournament-stage-filter" data-focus-key="tournament-stage" aria-label="Filter fase jadwal">
+          <option value="all" ${activeStage === 'all' ? 'selected' : ''}>Semua fase (${entries.length})</option>
+          ${stageOptions}
+        </select>
+      </label>
     </div>
-    ${matches.length ? `<div class="tournament-fixture-list">
-      ${matches.map((match) => {
-        const score = scoreLine(match);
-        return `<a href="/live" data-link class="tournament-fixture ${match.status === 'live' ? 'is-live' : ''}">
-          <span class="fixture-date"><b>${esc(formatDate(match.kickoff))}</b><small>${esc(formatTime(match.kickoff))} WIB</small></span>
-          <span class="fixture-group">Grup ${esc(match.groupId || '-')}</span>
-          <span class="fixture-teams">
-            <span>${teamDot(match.home)}<span class="fixture-team-name">${esc(match.home.name)}</span><b>${score.home}</b></span>
-            <span>${teamDot(match.away)}<span class="fixture-team-name">${esc(match.away.name)}</span><b>${score.away}</b></span>
-          </span>
-          <span class="fixture-status">${matchStatusPill(match)}</span>
-        </a>`;
-      }).join('')}
-    </div><a href="/live" data-link class="panel-link">Lihat di match center ${icon('arrow')}</a>`
-      : `<div class="tournament-schedule-empty">${icon('calendar')}<div><h3>Jadwal belum dibuat</h3><p>Jadwal grup akan muncul setelah seluruh slot tim terisi dan operator menyusun pertandingan.</p></div></div>`}
-  </div>`;
+    <div class="panel tournament-calendar">
+      ${filtered.length ? [...dateGroups.entries()].map(([date, dayEntries]) => {
+        const labelDate = new Date(`${date}T12:00:00+07:00`);
+        return `<div class="calendar-day ${date === today ? 'is-today' : ''}">
+          <div class="calendar-day-head">
+            <span class="calendar-day-number">${dayFormatter.format(labelDate)}</span>
+            <div class="calendar-day-copy"><strong>${longDateFormatter.format(labelDate)}</strong><span>${dayEntries.length} pertandingan${date === today ? ' · hari ini' : ''}</span></div>
+          </div>
+          <div class="calendar-day-list">${dayEntries.map(renderCalendarFixture).join('')}</div>
+        </div>`;
+      }).join('') : emptyState('calendar', activeStage === 'all' ? 'Jadwal belum tersedia' : 'Belum ada laga di fase ini', activeStage === 'all' ? 'Jadwal fase grup dan fase gugur akan muncul di sini setelah dibuat operator.' : 'Pilih fase lain atau kembali ke semua fase.')}
+      ${tournament.knockout ? '' : `<div class="calendar-future-note">
+        <span class="calendar-future-icon">${icon('trophy')}</span>
+        <div><strong>Fase gugur belum dijadwalkan</strong><p>Jadwal 8 besar sampai final otomatis masuk kalender ini setelah bracket fase gugur disusun admin.</p></div>
+      </div>`}
+    </div>
+  </section>`;
 }
 
 function renderTournamentPage() {
@@ -1258,6 +1367,8 @@ function renderTournamentPage() {
       <div class="qualification-route"><b>${groupCount} × ${tournament.qualifyPerGroup}</b><span>${icon('arrow')}</span><b>${qualifiedTotal} tim</b></div>
     </div>
 
+    ${renderTournamentCalendar(tournament)}
+
     ${renderTournamentKnockout(tournament)}
 
     <div class="section-head tournament-stats-heading">
@@ -1269,8 +1380,6 @@ function renderTournamentPage() {
       ${renderTournamentLeaderCard('Kartu kuning terbanyak', leaders.yellow || [], 'yellowCards', 'is-yellow-leader', 'Belum ada kartu kuning.')}
       ${renderTournamentLeaderCard('Kartu merah terbanyak', leaders.red || [], 'redCards', 'is-red-leader', 'Belum ada kartu merah.')}
     </div>
-
-    ${renderTournamentFixtures(tournament)}
   </section>`;
 }
 
@@ -3697,6 +3806,10 @@ document.addEventListener('change', (event) => {
   if (event.target.id === 'player-sort') {
     state.ui.playerSort = event.target.value;
     refreshPlayers();
+  }
+  if (event.target.id === 'tournament-stage-filter') {
+    state.ui.tournamentStage = event.target.value || 'all';
+    renderAll({ preserveFocus: true });
   }
   if (event.target.id === 'team-logo-file') {
     handleTeamLogoFile(event.target).catch((error) => toast(error.message, 'error'));

@@ -1301,7 +1301,6 @@ async function handleApi(req, res, url) {
         }
         oldMatchesToRemove.push(oldMatch.id);
       }
-      editableIds.add(template.id);
       nextSlots.push({
         ...template,
         homeId,
