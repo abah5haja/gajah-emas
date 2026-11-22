@@ -1483,6 +1483,13 @@ table { border-collapse: collapse; }
 .admin-group-board { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
 .admin-group-card { border: 1px solid var(--line); border-radius: 13px; background: rgba(255,255,255,.018); padding: 12px; }
 .admin-group-card-head { display: flex; align-items: center; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+.admin-group-add {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 3px;
+  height: 25px; padding: 0 7px; border: 1px solid rgba(207,255,69,.22); border-radius: 7px;
+  background: var(--accent-soft); color: var(--accent); font-size: 8px; font-weight: 600;
+}
+.admin-group-add .icon { width: 10px; height: 10px; }
+.admin-group-add:hover { background: rgba(207,255,69,.2); }
 .admin-group-card-head .group-letter { width: 27px; height: 27px; border-radius: 8px; font-size: 12px; }
 .admin-group-card-head h4 { font-family: var(--font-display); font-size: 13px; letter-spacing: -.02em; line-height: 1.1; margin-top: 2px; }
 .admin-group-slot-list { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; }
@@ -2057,6 +2064,7 @@ html[data-theme="light"] .admin-group-card,
 html[data-theme="light"] .admin-group-team-row { background: rgba(17, 22, 13, .025); border-color: var(--line); }
 html[data-theme="light"] .admin-group-empty-slot { border-color: var(--line-strong); }
 html[data-theme="light"] .admin-group-empty-slot:hover { background: var(--accent-soft); }
+html[data-theme="light"] .admin-group-add { border-color: rgba(109, 159, 0, .25); color: #557e00; }
 html[data-theme="light"] .admin-group-card-head,
 html[data-theme="light"] .admin-history-row,
 html[data-theme="light"] .admin-danger-zone { border-color: var(--line); }

@@ -1028,7 +1028,7 @@ function renderTournamentGroup(group, tournament) {
     tableRows += Array.from({ length: emptySlots }, () => `<tr class="group-empty-row">
       <td>—</td>
       <td class="group-team-cell">${canAssign
-        ? `<button type="button" class="empty-team-add" data-action="open-group-picker" data-group="${esc(group.id)}">${icon('plus')} Pilih tim</button>`
+        ? `<button type="button" class="empty-team-add" data-action="open-group-picker" data-group="${esc(group.id)}">${icon('plus')} Tambah tim</button>`
         : '<span class="empty-team">Menunggu tim</span>'}</td>
       <td>—</td><td class="hide-mobile">—</td><td class="hide-mobile">—</td><td class="hide-mobile">—</td>
       <td>—</td><td>—</td><td>—</td>
@@ -2096,6 +2096,7 @@ function renderAdminTournamentGroups() {
           <div class="admin-group-card-head">
             <span class="group-letter">${esc(group.id)}</span>
             <div><span class="kicker">Grup ${esc(group.id)}</span><h4>${teams.length}/${tournament.teamsPerGroup} tim</h4></div>
+            ${!locked && empty > 0 ? `<button type="button" class="admin-group-add" data-action="open-group-picker" data-group="${esc(group.id)}">${icon('plus')} Tambah</button>` : ''}
           </div>
           <div class="admin-group-slot-list">
             ${teams.map((team) => `<div class="admin-group-team-row">
@@ -2105,7 +2106,7 @@ function renderAdminTournamentGroups() {
             </div>`).join('')}
             ${Array.from({ length: empty }, () => `<button type="button" class="admin-group-empty-slot" data-action="open-group-picker" data-group="${esc(group.id)}" ${locked ? 'disabled' : ''}>
               <span class="admin-slot-plus">${icon('plus')}</span>
-              <span>${locked ? 'Slot kosong' : 'Pilih tim'}</span>
+              <span>${locked ? 'Slot kosong' : 'Tambah tim'}</span>
             </button>`).join('')}
             ${empty === 0 ? '<div class="admin-group-full">Grup penuh</div>' : ''}
           </div>
@@ -2215,9 +2216,9 @@ function renderAdminTournamentTab() {
   }
   return `<div class="admin-layout">
     <div class="admin-main">
-      ${renderAdminTournamentSettings()}
       ${renderAdminTournamentGroups()}
       ${renderAdminTournamentFixtures()}
+      ${renderAdminTournamentSettings()}
     </div>
     <aside class="admin-side">
       ${renderAdminTournamentHistory()}
