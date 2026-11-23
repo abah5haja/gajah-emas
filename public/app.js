@@ -314,6 +314,7 @@ const ICON_PATHS = {
   lock: '<rect x="4" y="10" width="16" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
   logout: '<path d="M10 5H5v14h5M14 8l4 4-4 4M8 12h10"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14"/>',
+  edit: '<path d="M4 20h4L20 8l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/>',
   play: '<path d="m8 5 11 7-11 7V5Z"/>',
   pause: '<path d="M8 5v14M16 5v14"/>',
   swap: '<path d="M4 8h13l-3-3M20 16H7l3 3"/>',
@@ -1702,6 +1703,8 @@ function renderModal() {
   } else if (type === 'player') {
     content = renderPlayerModal(payload.playerId);
     wide = true;
+  } else if (type === 'team-edit') {
+    content = renderAdminTeamEditModal(payload.teamId);
   } else if (type === 'join-mabar') {
     content = renderJoinModal(payload.sessionId);
   } else if (type === 'create-mabar') {
@@ -2328,13 +2331,56 @@ function renderAdminTeamList() {
   return `<div class="panel admin-form-panel">
     <div class="panel-head"><div><span class="panel-kicker">Terdaftar</span><h3>Daftar tim</h3></div><span class="tiny-label">${teams.length} tim</span></div>
     <div class="admin-team-list">
-      ${teams.map((team) => `<button type="button" class="admin-team-row" data-action="open-team" data-id="${esc(team.id)}">
-        ${crest(team, 'sm')}
-        <span class="admin-team-copy"><strong>${esc(team.name)}</strong><span>${esc(team.city)} · ${team.playerCount} pemain</span></span>
-        <span class="admin-team-rank">#${team.standing ? pad(team.standing.rank) : '—'}</span>
-        ${icon('arrow')}
-      </button>`).join('')}
+      ${teams.map((team) => `<div class="admin-team-row">
+        <button type="button" class="admin-team-open" data-action="open-team" data-id="${esc(team.id)}">
+          ${crest(team, 'sm')}
+          <span class="admin-team-copy"><strong>${esc(team.name)}</strong><span>${esc(team.city)} · ${team.playerCount} pemain</span></span>
+          <span class="admin-team-rank">#${team.standing ? pad(team.standing.rank) : '—'}</span>
+        </button>
+        <span class="admin-team-actions">
+          <button type="button" class="icon-button" data-action="edit-team" data-id="${esc(team.id)}" aria-label="Ubah ${esc(team.name)}" title="Ubah tim">${icon('edit')}</button>
+          <button type="button" class="icon-button danger" data-action="delete-team" data-id="${esc(team.id)}" aria-label="Hapus ${esc(team.name)}" title="Hapus tim">${icon('trash')}</button>
+        </span>
+      </div>`).join('')}
     </div>
+  </div>`;
+}
+
+function renderAdminTeamEditModal(teamId) {
+  const team = getTeam(teamId);
+  if (!team) return '';
+  return `<div class="panel admin-form-panel">
+    <div class="panel-head"><div><span class="panel-kicker">Ubah tim</span><h3 id="modal-title">${esc(team.name)}</h3></div>${icon('teams')}</div>
+    <form data-form="admin-edit-team" data-team-id="${esc(team.id)}" class="stack-form">
+      <div class="form-grid">
+        <label class="field field-span-2"><span>Nama tim</span><input name="name" value="${esc(team.name)}" minlength="2" maxlength="50" required autofocus></label>
+        <label class="field"><span>Kota</span><input name="city" value="${esc(team.city)}" maxlength="60" required></label>
+        <label class="field"><span>Tahun berdiri</span><input name="founded" type="number" min="1900" max="${new Date().getFullYear() + 1}" value="${team.founded || ''}"></label>
+        <label class="field"><span>Pelatih <em>(opsional)</em></span><input name="coach" value="${esc(team.coach || '')}" maxlength="50"></label>
+        <label class="field"><span>No. HP / WhatsApp pengurus <em>(opsional)</em></span><input name="whatsapp" value="${esc(waDisplay(team.managerWhatsapp || ''))}" inputmode="tel" maxlength="20" placeholder="0812xxxxxxx"></label>
+        <label class="field field-span-2"><span>Lapangan / home base <em>(opsional)</em></span><input name="venue" value="${esc(team.venue || '')}" maxlength="80"></label>
+        <label class="field color-field"><span>Warna utama</span><input name="color" type="color" value="${safeColor(team.color)}"></label>
+        <label class="field color-field"><span>Warna gelap</span><input name="color2" type="color" value="${safeColor(team.color2, '#182018')}"></label>
+        <div class="field field-span-2 logo-field">
+          <span>Logo tim</span>
+          <div class="logo-upload">
+            <div class="logo-preview ${team.logo ? 'has-image' : ''}" id="team-edit-logo-preview">
+              ${team.logo ? `<img src="${esc(team.logo)}" alt="Logo ${esc(team.name)}">` : renderLogoPlaceholder()}
+            </div>
+            <div class="logo-upload-copy">
+              <div class="logo-actions">
+                <label class="btn btn-ghost btn-sm" for="team-edit-logo-file">${icon('plus')} Ganti logo</label>
+                <input id="team-edit-logo-file" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+                <input id="team-edit-logo-data" type="hidden" name="logo" value="">
+                <button type="button" class="btn btn-ghost btn-sm" data-action="clear-team-edit-logo">${icon('x')} Hapus</button>
+              </div>
+              <small>PNG, JPG, atau WebP. Gambar diperkecil otomatis agar ringan.</small>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary btn-block">${icon('check')} Simpan perubahan</button>
+    </form>
   </div>`;
 }
 
@@ -2887,6 +2933,26 @@ async function prepareImageUpload(file) {
   return result;
 }
 
+async function handleTeamEditLogoFile(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const dataInput = document.getElementById('team-edit-logo-data');
+  const preview = document.getElementById('team-edit-logo-preview');
+  try {
+    const dataUrl = await prepareImageUpload(file);
+    if (dataInput) dataInput.value = dataUrl;
+    if (preview) {
+      preview.classList.add('has-image');
+      preview.innerHTML = `<img src="${esc(dataUrl)}" alt="Pratinjau logo tim">`;
+    }
+    toast('Logo siap dipakai.', 'info');
+  } catch (error) {
+    input.value = '';
+    if (dataInput) dataInput.value = '';
+    toast(error.message, 'error');
+  }
+}
+
 async function handleTeamLogoFile(input) {
   const file = input.files && input.files[0];
   if (!file) return;
@@ -2973,6 +3039,28 @@ async function handleAction(element, event) {
   if (action === 'open-team') {
     event.preventDefault();
     openModal('team', { teamId: element.dataset.id });
+    return;
+  }
+
+  if (action === 'edit-team') {
+    event.preventDefault();
+    openModal('team-edit', { teamId: element.dataset.id });
+    return;
+  }
+
+  if (action === 'delete-team') {
+    event.preventDefault();
+    const id = element.dataset.id;
+    const team = getTeam(id);
+    if (!team) return;
+    if (!window.confirm(`Hapus ${team.name}? Pemain dan logo tim ini ikut terhapus.`)) return;
+    try {
+      await api(`/api/admin/teams/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      await refreshState();
+      toast(`${team.name} dihapus.`);
+    } catch (error) {
+      toast(error.message, 'error');
+    }
     return;
   }
 
@@ -3067,6 +3155,20 @@ async function handleAction(element, event) {
       return;
     }
     row.remove();
+    return;
+  }
+
+  if (action === 'clear-team-edit-logo') {
+    event.preventDefault();
+    const dataInput = document.getElementById('team-edit-logo-data');
+    const fileInput = document.getElementById('team-edit-logo-file');
+    const preview = document.getElementById('team-edit-logo-preview');
+    if (dataInput) dataInput.value = 'remove';
+    if (fileInput) fileInput.value = '';
+    if (preview) {
+      preview.classList.remove('has-image');
+      preview.innerHTML = renderLogoPlaceholder();
+    }
     return;
   }
 
@@ -3655,6 +3757,40 @@ async function handleForm(form) {
     return;
   }
 
+  if (name === 'admin-edit-team') {
+    const teamId = String(form.dataset.teamId || '');
+    const team = getTeam(teamId);
+    if (!team) {
+      toast('Tim tidak ditemukan.', 'error');
+      return;
+    }
+    busy(submit, true);
+    try {
+      await api(`/api/admin/teams/${encodeURIComponent(teamId)}`, {
+        method: 'PATCH',
+        body: {
+          name: values.name,
+          city: values.city,
+          coach: values.coach,
+          founded: Number(values.founded) || undefined,
+          venue: values.venue,
+          whatsapp: values.whatsapp,
+          color: values.color,
+          color2: values.color2,
+          logo: values.logo || ''
+        }
+      });
+      closeModal();
+      await refreshState();
+      toast(`${values.name} diperbarui.`);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      busy(submit, false);
+    }
+    return;
+  }
+
   if (name === 'admin-create-team') {
     const rosterRows = [...form.querySelectorAll('.roster-input-row')];
     const players = rosterRows.map((row) => ({
@@ -3820,6 +3956,9 @@ document.addEventListener('change', (event) => {
   if (event.target.id === 'tournament-stage-filter') {
     state.ui.tournamentStage = event.target.value || 'all';
     renderAll({ preserveFocus: true });
+  }
+  if (event.target.id === 'team-edit-logo-file') {
+    handleTeamEditLogoFile(event.target).catch((error) => toast(error.message, 'error'));
   }
   if (event.target.id === 'team-logo-file') {
     handleTeamLogoFile(event.target).catch((error) => toast(error.message, 'error'));

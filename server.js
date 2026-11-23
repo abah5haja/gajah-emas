@@ -1587,6 +1587,69 @@ async function handleApi(req, res, url) {
     return;
   }
 
+  const teamIdMatch = pathname.match(/^\/api\/admin\/teams\/([^/]+)$/);
+  if (teamIdMatch && method === 'PATCH') {
+    const id = decodeURIComponent(teamIdMatch[1]);
+    const team = teamMap.get(id);
+    if (!team) throw new HttpError(404, 'Tim tidak ditemukan.');
+    const body = await readJson(req, 8 * 1024 * 1024);
+    const name = text(body.name, 50);
+    if (name.length < 2) throw new HttpError(400, 'Nama tim minimal 2 karakter.');
+    if (db.teams.some((item) => item.id !== id && item.name.toLowerCase() === name.toLowerCase())) {
+      throw new HttpError(409, 'Nama tim sudah dipakai.');
+    }
+    const rawManagerWhatsapp = text(body.whatsapp, 30);
+    const managerWhatsapp = normalizeWhatsapp(rawManagerWhatsapp);
+    if (rawManagerWhatsapp && !managerWhatsapp) throw new HttpError(400, 'Nomor WhatsApp pengurus tidak valid.');
+    const currentYear = new Date().getFullYear();
+    team.name = name;
+    team.city = text(body.city, 60) || team.city || 'Jakarta';
+    team.coach = text(body.coach, 50) || 'Belum diisi';
+    team.founded = clamp(Math.floor(number(body.founded, team.founded)), 1900, currentYear + 1);
+    team.venue = text(body.venue, 80) || 'Lapangan Mini Soccer';
+    team.color = /^#[0-9a-fA-F]{6}$/.test(String(body.color || '')) ? String(body.color) : team.color;
+    team.color2 = /^#[0-9a-fA-F]{6}$/.test(String(body.color2 || '')) ? String(body.color2) : team.color2;
+    team.managerWhatsapp = managerWhatsapp;
+    const rawLogo = typeof body.logo === 'string' ? body.logo : '';
+    if (rawLogo === 'remove') {
+      removeUpload(team.logo, 'team');
+      team.logo = null;
+    } else if (rawLogo) {
+      const nextLogo = saveTeamLogo(team.id, rawLogo);
+      if (nextLogo && team.logo && team.logo !== nextLogo) removeUpload(team.logo, 'team');
+      if (nextLogo) team.logo = nextLogo;
+    }
+    persist();
+    broadcast();
+    sendJson(res, 200, { ok: true, team });
+    return;
+  }
+
+  if (teamIdMatch && method === 'DELETE') {
+    const id = decodeURIComponent(teamIdMatch[1]);
+    const team = teamMap.get(id);
+    if (!team) throw new HttpError(404, 'Tim tidak ditemukan.');
+    if (db.matches.some((match) => match.homeId === id || match.awayId === id)) {
+      throw new HttpError(409, `${team.name} masih punya laga. Hapus laga terkait dulu sebelum menghapus tim.`);
+    }
+    for (const player of db.players.filter((item) => item.teamId === id)) removeUpload(player.photo, 'player');
+    db.players = db.players.filter((item) => item.teamId !== id);
+    removeUpload(team.logo, 'team');
+    db.teams = db.teams.filter((item) => item.id !== id);
+    teamMap.delete(id);
+    for (const group of (db.tournament && db.tournament.groups) || []) {
+      if (Array.isArray(group.teamIds)) group.teamIds = group.teamIds.filter((teamId) => teamId !== id);
+    }
+    for (const slot of (db.tournament && db.tournament.knockout && db.tournament.knockout.slots) || []) {
+      if (slot.homeId === id) slot.homeId = null;
+      if (slot.awayId === id) slot.awayId = null;
+    }
+    persist();
+    broadcast();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
   if (method === 'POST' && pathname === '/api/admin/matches') {
     const body = await readJson(req);
     const homeId = text(body.homeId, 60);

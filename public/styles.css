@@ -1565,17 +1565,25 @@ table { border-collapse: collapse; }
 .roster-input-row .icon-button .icon { width: 13px; height: 13px; }
 .admin-team-list { display: flex; flex-direction: column; max-height: 470px; overflow: auto; }
 .admin-team-row {
-  display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 5px;
-  border: 0; border-bottom: 1px solid rgba(236,245,229,.05); border-radius: 8px;
-  background: transparent; text-align: left; transition: background .16s;
+  display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 5px;
+  border-bottom: 1px solid rgba(236,245,229,.05); border-radius: 8px;
+  background: transparent; transition: background .16s;
 }
 .admin-team-row:hover { background: rgba(255,255,255,.035); }
 .admin-team-row:last-child { border-bottom: 0; }
+.admin-team-open {
+  display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0;
+  border: 0; padding: 2px 0; background: transparent; color: inherit; text-align: left; cursor: pointer;
+}
+.admin-team-actions { display: flex; gap: 3px; opacity: .4; transition: opacity .16s; }
+.admin-team-row:hover .admin-team-actions,
+.admin-team-actions:focus-within { opacity: 1; }
+.admin-team-actions .icon-button { width: 24px; height: 24px; }
+.admin-team-actions .icon { width: 12px; height: 12px; }
 .admin-team-copy { display: flex; flex-direction: column; min-width: 0; flex: 1; }
 .admin-team-copy strong { font-size: 10.5px; font-weight: 600; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .admin-team-copy span { color: var(--muted-2); font-size: 8.5px; }
 .admin-team-rank { color: var(--muted-2); font-family: var(--font-display); font-size: 9px; }
-.admin-team-row > .icon { width: 12px; height: 12px; color: var(--muted-2); }
 .admin-lock-note {
   margin-top: 11px; padding: 8px 9px; border-left: 2px solid rgba(255, 209, 102, .35);
   border-radius: 0 6px 6px 0; background: rgba(255, 209, 102, .045);
