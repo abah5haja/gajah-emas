@@ -1277,6 +1277,8 @@ table { border-collapse: collapse; }
 .modal-contact-line { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; }
 .modal-contact-line strong { color: var(--text); font-weight: 600; }
 .modal-contact-line .icon { width: 13px; height: 13px; color: var(--muted-2); }
+.modal-contact-line a { color: inherit; text-decoration: none; }
+.modal-contact-line a:hover strong { color: var(--accent); }
 
 .player-modal-hero {
   position: relative; overflow: hidden; min-height: 205px;

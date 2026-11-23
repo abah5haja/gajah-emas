@@ -78,7 +78,7 @@ function loadDb() {
       changed = true;
     }
     for (const team of data.teams || []) {
-      if (typeof team.manager !== 'string') { team.manager = ''; changed = true; }
+      if ('manager' in team) { delete team.manager; changed = true; }
       if (typeof team.managerWhatsapp !== 'string') { team.managerWhatsapp = ''; changed = true; }
     }
     if (changed) fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
@@ -1511,7 +1511,6 @@ async function handleApi(req, res, url) {
       throw new HttpError(409, 'Nama tim sudah dipakai.');
     }
     const currentYear = new Date().getFullYear();
-    const manager = text(body.manager, 50);
     const rawManagerWhatsapp = text(body.whatsapp, 30);
     const managerWhatsapp = normalizeWhatsapp(rawManagerWhatsapp);
     if (rawManagerWhatsapp && !managerWhatsapp) throw new HttpError(400, 'Nomor WhatsApp pengurus tidak valid.');
@@ -1583,7 +1582,6 @@ async function handleApi(req, res, url) {
       coach: text(body.coach, 50) || 'Belum diisi',
       founded: clamp(Math.floor(number(body.founded, currentYear)), 1900, currentYear + 1),
       venue: text(body.venue, 80) || 'Lapangan Mini Soccer',
-      manager,
       managerWhatsapp,
       logo
     };
@@ -1601,11 +1599,9 @@ async function handleApi(req, res, url) {
     const team = teamMap.get(decodeURIComponent(teamContactMatch[1]));
     if (!team) throw new HttpError(404, 'Tim tidak ditemukan.');
     const body = await readJson(req);
-    const manager = text(body.manager, 50);
     const rawWhatsapp = text(body.whatsapp, 30);
     const managerWhatsapp = normalizeWhatsapp(rawWhatsapp);
     if (rawWhatsapp && !managerWhatsapp) throw new HttpError(400, 'Nomor WhatsApp pengurus tidak valid.');
-    team.manager = manager;
     team.managerWhatsapp = managerWhatsapp;
     persist();
     broadcast();

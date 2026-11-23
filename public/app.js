@@ -65,6 +65,12 @@ function waHref(number, message = '') {
   return `https://wa.me/${digits}${query}`;
 }
 
+function waDisplay(number) {
+  const digits = String(number || '').replace(/\D/g, '');
+  if (digits.startsWith('62')) return `0${digits.slice(2)}`;
+  return digits;
+}
+
 function adminWhatsappHref(message) {
   const meta = state.data && state.data.meta ? state.data.meta : {};
   return waHref(meta.adminWhatsapp, message || `Halo ${meta.adminName || 'Admin'}, saya mau tanya tentang liga mini soccer.`);
@@ -1755,7 +1761,7 @@ function renderTeamModal(teamId) {
   const last = teamMatches
     .filter((match) => match.status === 'finished')
     .sort((a, b) => new Date(b.kickoff) - new Date(a.kickoff))[0];
-  const managerWa = waHref(team.managerWhatsapp, `Halo ${team.manager || 'pengurus'}, saya mau tanya soal tim ${team.name}.`);
+  const managerWa = waHref(team.managerWhatsapp, `Halo, saya mau tanya soal tim ${team.name}.`);
 
   function opponentFixture(match, label) {
     if (!match) return '';
@@ -1810,9 +1816,9 @@ function renderTeamModal(teamId) {
             ? `${next ? opponentFixture(next, 'Laga berikutnya') : ''}${next && last ? '<div class="modal-divider"></div>' : ''}${last ? opponentFixture(last, 'Hasil terakhir') : ''}`
             : '<p class="muted small">Belum ada jadwal untuk tim ini.</p>'}
           <div class="modal-venue">${icon('pin')} Home base: ${esc(team.venue)}</div>
-          ${(team.manager || managerWa) ? `<div class="modal-contact">
-            ${team.manager ? `<span class="modal-contact-line">${icon('users')} Pengurus: <strong>${esc(team.manager)}</strong></span>` : ''}
-            ${managerWa ? `<a class="btn btn-ghost btn-sm" href="${esc(managerWa)}" target="_blank" rel="noopener">${icon('whatsapp')} Chat pengurus</a>` : ''}
+          ${managerWa ? `<div class="modal-contact">
+            <span class="modal-contact-line">${icon('whatsapp')} WhatsApp pengurus: <a href="${esc(managerWa)}" target="_blank" rel="noopener"><strong>${esc(waDisplay(team.managerWhatsapp))}</strong></a></span>
+            <a class="btn btn-ghost btn-sm" href="${esc(managerWa)}" target="_blank" rel="noopener">${icon('whatsapp')} Chat pengurus</a>
           </div>` : ''}
         </div>
       </div>
@@ -2285,7 +2291,6 @@ function renderAdminCreateTeam() {
         <label class="field"><span>Kota</span><input name="city" value="Jakarta" maxlength="60" required></label>
         <label class="field"><span>Tahun berdiri</span><input name="founded" type="number" min="1900" max="${new Date().getFullYear() + 1}" value="${new Date().getFullYear()}"></label>
         <label class="field"><span>Pelatih <em>(opsional)</em></span><input name="coach" placeholder="Nama pelatih" maxlength="50"></label>
-        <label class="field"><span>Nama pengurus tim <em>(opsional)</em></span><input name="manager" placeholder="Nama admin tim" maxlength="50"></label>
         <label class="field field-span-2"><span>No. HP / WhatsApp pengurus <em>(opsional)</em></span><input name="whatsapp" inputmode="tel" maxlength="20" placeholder="0812xxxxxxx"></label>
         <label class="field field-span-2"><span>Lapangan / home base <em>(opsional)</em></span><input name="venue" placeholder="Lapangan Cempaka" maxlength="80"></label>
         <label class="field color-field"><span>Warna utama</span><input name="color" type="color" value="#cfff45"></label>
@@ -2769,17 +2774,14 @@ function renderAdminContactTab() {
       </div>
       <div class="panel admin-form-panel">
         <div class="panel-head"><div><span class="panel-kicker">Tim</span><h3>Kontak pengurus tim</h3></div>${icon('teams')}</div>
-        <p class="inline-hint">Tampil di profil tim publik sebagai tombol “Chat pengurus”. Nomor boleh diawali 08 atau 62. Nomor juga bisa diisi langsung saat membuat tim baru.</p>
+        <p class="inline-hint">Nomor tampil di profil tim publik dan bisa diklik untuk langsung WhatsApp pengurus. Nomor boleh diawali 08 atau 62, dan juga bisa diisi saat membuat tim baru.</p>
         <form data-form="admin-team-contact" class="stack-form">
           <label class="field"><span>Pilih tim</span>
             <select name="teamId" id="team-contact-team">
-              ${teams.map((team) => `<option value="${esc(team.id)}" data-manager="${esc(team.manager || '')}" data-whatsapp="${esc(team.managerWhatsapp || '')}">${esc(team.name)}${team.manager ? ` · ${esc(team.manager)}` : ''}</option>`).join('')}
+              ${teams.map((team) => `<option value="${esc(team.id)}" data-whatsapp="${esc(team.managerWhatsapp || '')}">${esc(team.name)}</option>`).join('')}
             </select>
           </label>
-          <div class="form-grid">
-            <label class="field"><span>Nama pengurus</span><input name="manager" maxlength="50" placeholder="Nama pengurus / manajer"></label>
-            <label class="field"><span>WhatsApp pengurus</span><input name="whatsapp" maxlength="20" inputmode="tel" placeholder="0812xxxxxxx"></label>
-          </div>
+          <label class="field"><span>WhatsApp pengurus</span><input name="whatsapp" maxlength="20" inputmode="tel" placeholder="0812xxxxxxx"></label>
           <button type="submit" class="btn btn-primary btn-block">${icon('check')} Simpan kontak pengurus</button>
         </form>
       </div>
@@ -3730,7 +3732,7 @@ async function handleForm(form) {
     try {
       await api(`/api/admin/teams/${encodeURIComponent(team.id)}/contact`, {
         method: 'PATCH',
-        body: { manager: values.manager, whatsapp: values.whatsapp }
+        body: { whatsapp: values.whatsapp }
       });
       await refreshState();
       toast(`Kontak pengurus ${team.name} disimpan.`);
@@ -3762,7 +3764,6 @@ async function handleForm(form) {
           name: values.name,
           city: values.city,
           coach: values.coach,
-          manager: values.manager,
           whatsapp: values.whatsapp,
           founded: Number(values.founded) || undefined,
           venue: values.venue,
@@ -3925,9 +3926,7 @@ document.addEventListener('change', (event) => {
     const option = event.target.selectedOptions[0];
     const form = event.target.closest('form');
     if (option && form) {
-      const manager = form.querySelector('input[name="manager"]');
       const whatsapp = form.querySelector('input[name="whatsapp"]');
-      if (manager) manager.value = option.dataset.manager || '';
       if (whatsapp) whatsapp.value = option.dataset.whatsapp || '';
     }
   }
