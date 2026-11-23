@@ -9,7 +9,6 @@ const WIB = 'Asia/Jakarta';
 const MINUTE_MS = 60 * 1000;
 const root = {
   header: document.getElementById('site-header'),
-  ticker: document.getElementById('ticker-root'),
   view: document.getElementById('view'),
   footer: document.getElementById('site-footer'),
   mobileNav: document.getElementById('mobile-nav'),
@@ -55,6 +54,20 @@ function logoSrc(value) {
 function photoSrc(value) {
   const source = String(value || '');
   return /^\/uploads\/player-[a-zA-Z0-9_-]+\.(png|jpe?g|webp)$/i.test(source) ? source : '';
+}
+
+function waHref(number, message = '') {
+  let digits = String(number || '').replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0')) digits = `62${digits.slice(1)}`;
+  else if (digits.startsWith('8')) digits = `62${digits}`;
+  const query = message ? `?text=${encodeURIComponent(message)}` : '';
+  return `https://wa.me/${digits}${query}`;
+}
+
+function adminWhatsappHref(message) {
+  const meta = state.data && state.data.meta ? state.data.meta : {};
+  return waHref(meta.adminWhatsapp, message || `Halo ${meta.adminName || 'Admin'}, saya mau tanya tentang liga mini soccer.`);
 }
 
 function num(value, fallback = 0) {
@@ -315,7 +328,8 @@ const ICON_PATHS = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
   moon: '<path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5 8.5 8.5 0 1 0 20.5 14.2Z"/>',
   camera: '<path d="M4 8h3l1.5-2h7L17 8h3v11H4V8Z"/><circle cx="12" cy="13" r="3.3"/>',
-  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>'
+  download: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
+  whatsapp: '<path d="M20.5 11.6a8.4 8.4 0 0 1-12.4 7.4L3.5 20.5l1.5-4.5a8.4 8.4 0 1 1 15.5-4.4Z"/><path d="M9 8.5c.4-.9.8-1 1.2-.9l.9 1.7c.1.3 0 .6-.2.9l-.6.7c.5 1.1 1.4 1.9 2.5 2.4l.7-.6c.3-.2.6-.3.9-.2l1.7.9c.1.4 0 .8-.9 1.2-1.3.6-2.6.2-4.2-1s-2.6-3.4-2-4.8Z"/>'
 };
 
 function icon(name, extraClass = '') {
@@ -400,6 +414,7 @@ function renderMobileNav() {
 
 function renderFooter() {
   if (!state.data) return;
+  const adminWa = adminWhatsappHref();
   root.footer.innerHTML = `
     <div class="wrap footer-inner">
       <div class="footer-brand">
@@ -421,38 +436,13 @@ function renderFooter() {
           <span class="footer-label">Komunitas</span>
           <a href="/mabar" data-link>Mabar</a>
           <a href="/admin" data-link>Operator</a>
+          ${adminWa ? `<a href="${esc(adminWa)}" target="_blank" rel="noopener" class="footer-wa">${icon('whatsapp')} Hubungi admin</a>` : ''}
         </div>
       </div>
     </div>
     <div class="wrap footer-bottom">
       <span>© ${new Date().getFullYear()} ${esc(state.data.meta.season)}</span>
       <span class="live-tech">${icon('wifi')} Live data · SSE</span>
-    </div>`;
-}
-
-function renderTicker() {
-  if (!state.data) return;
-  const live = state.data.matches.filter((match) => match.status === 'live');
-  const recent = state.data.matches.filter((match) => match.status === 'finished').slice(-3).reverse();
-  const openSessions = state.data.mabar.filter((session) => session.participants.length < session.slots).length;
-  const items = [];
-
-  live.forEach((match) => {
-    items.push(`<span class="ticker-item"><span class="ticker-live">LIVE</span><strong>${esc(match.home.name)} ${match.homeScore}–${match.awayScore} ${esc(match.away.name)}</strong><span class="ticker-muted">${liveMinute(match)}'</span></span>`);
-  });
-  recent.forEach((match) => {
-    items.push(`<span class="ticker-item"><span class="ticker-muted">FT</span><span>${esc(match.home.short)} ${match.homeScore}–${match.awayScore} ${esc(match.away.short)}</span></span>`);
-  });
-  items.push(`<span class="ticker-item"><span class="ticker-accent">${icon('mabar')}</span><strong>${openSessions} sesi mabar</strong><span class="ticker-muted">siap diikuti</span></span>`);
-  items.push(`<span class="ticker-item"><span class="ticker-accent">${icon('players')}</span><span>${state.data.players.length} pemain terdaftar</span></span>`);
-
-  const content = items.join('<span class="ticker-separator" aria-hidden="true">/</span>');
-  root.ticker.innerHTML = `
-    <div class="ticker">
-      <div class="wrap ticker-inner">
-        <span class="ticker-brand">${icon('live')} LIVE WIRE</span>
-        <div class="ticker-viewport"><div class="ticker-track">${content}<span class="ticker-separator" aria-hidden="true">/</span>${content}</div></div>
-      </div>
     </div>`;
 }
 
@@ -465,7 +455,6 @@ function renderAll(options = {}) {
   const selectionEnd = active && typeof active.selectionEnd === 'number' ? active.selectionEnd : null;
 
   renderHeader();
-  renderTicker();
   renderPage();
   renderFooter();
   renderMobileNav();
@@ -661,7 +650,7 @@ function standingsTable(limit = 8) {
       <tbody>
         ${rows.map((row) => `<tr class="${row.rank <= 2 ? 'is-qualified' : ''}">
           <td class="rank-cell">${pad(row.rank)}</td>
-          <td class="team-cell"><span class="team-dot" style="--dot-color:${safeColor(row.color)}"></span><strong>${esc(row.name)}</strong><span class="team-short">${esc(row.short)}</span></td>
+          <td class="team-cell"><span class="team-dot" style="--dot-color:${safeColor(row.color)}"></span><strong>${esc(row.name)}</strong></td>
           <td>${row.played}</td>
           <td>${row.goalDiff > 0 ? '+' : ''}${row.goalDiff}</td>
           <td class="points-cell">${row.points}</td>
@@ -1538,7 +1527,7 @@ function renderPlayersPage() {
     <div class="filter-row">
       <div class="filter-chips">
         <button type="button" class="filter-chip ${!state.ui.playerTeam ? 'is-active' : ''}" data-action="filter-team" data-team-filter="" aria-pressed="${!state.ui.playerTeam}">Semua tim</button>
-        ${state.data.teams.map((team) => `<button type="button" class="filter-chip ${state.ui.playerTeam === team.id ? 'is-active' : ''}" data-action="filter-team" data-team-filter="${esc(team.id)}" aria-pressed="${state.ui.playerTeam === team.id}"><span class="team-dot" style="--dot-color:${safeColor(team.color)}"></span>${esc(team.short)}</button>`).join('')}
+        ${state.data.teams.map((team) => `<button type="button" class="filter-chip ${state.ui.playerTeam === team.id ? 'is-active' : ''}" data-action="filter-team" data-team-filter="${esc(team.id)}" aria-pressed="${state.ui.playerTeam === team.id}"><span class="team-dot" style="--dot-color:${safeColor(team.color)}"></span>${esc(team.name)}</button>`).join('')}
       </div>
       <span class="player-count" id="player-count">${playerCountLabel(players)}</span>
     </div>
@@ -1653,6 +1642,7 @@ function renderMabarPage() {
   const open = sessions.filter((session) => !sessionIsPast(session));
   const totalPlayers = sessions.reduce((total, session) => total + session.participants.length, 0);
   const openSlots = open.reduce((total, session) => total + Math.max(0, session.slots - session.participants.length), 0);
+  const adminWa = adminWhatsappHref(`Halo ${state.data.meta.adminName || 'Admin'}, saya mau tanya soal mabar di ${state.data.meta.season || 'liga mini soccer'}.`);
   return `${pageHead({
     eyebrow: 'Komunitas',
     title: `Kurang orang?<br><span class="accent-text">Mabar saja.</span>`,
@@ -1674,7 +1664,10 @@ function renderMabarPage() {
     <div class="mabar-grid">${sessions.length ? sessions.map(mabarCard).join('') : emptyState('mabar', 'Belum ada sesi', 'Jadilah yang pertama membuat mabar di pekan ini.')}</div>
     <div class="mabar-cta">
       <div><span class="kicker">Punya lapangan dan waktu?</span><h2>Bikin sesi, ajak yang lain.</h2><p>Isi detail singkat, tentukan jumlah slot, lalu bagikan halaman ini ke grup.</p></div>
-      <button type="button" class="btn btn-primary" data-action="create-mabar">${icon('plus')} Buat mabar baru</button>
+      <div class="mabar-cta-actions">
+        <button type="button" class="btn btn-primary" data-action="create-mabar">${icon('plus')} Buat mabar baru</button>
+        ${adminWa ? `<a class="btn btn-ghost" href="${esc(adminWa)}" target="_blank" rel="noopener">${icon('whatsapp')} Hub admin</a>` : ''}
+      </div>
     </div>
   </section>`;
 }
@@ -1762,6 +1755,7 @@ function renderTeamModal(teamId) {
   const last = teamMatches
     .filter((match) => match.status === 'finished')
     .sort((a, b) => new Date(b.kickoff) - new Date(a.kickoff))[0];
+  const managerWa = waHref(team.managerWhatsapp, `Halo ${team.manager || 'pengurus'}, saya mau tanya soal tim ${team.name}.`);
 
   function opponentFixture(match, label) {
     if (!match) return '';
@@ -1779,7 +1773,7 @@ function renderTeamModal(teamId) {
       <span class="team-modal-glow" aria-hidden="true"></span>
       ${crest(team, 'xl')}
       <div class="team-modal-identity">
-        <span class="kicker">Profil tim · ${esc(team.short)}</span>
+        <span class="kicker">Profil tim · ${esc(team.city)}</span>
         <h2 id="modal-title">${esc(team.name)}</h2>
         <p>${esc(team.city)} · berdiri sejak ${team.founded} · pelatih ${esc(team.coach)}</p>
       </div>
@@ -1816,6 +1810,10 @@ function renderTeamModal(teamId) {
             ? `${next ? opponentFixture(next, 'Laga berikutnya') : ''}${next && last ? '<div class="modal-divider"></div>' : ''}${last ? opponentFixture(last, 'Hasil terakhir') : ''}`
             : '<p class="muted small">Belum ada jadwal untuk tim ini.</p>'}
           <div class="modal-venue">${icon('pin')} Home base: ${esc(team.venue)}</div>
+          ${(team.manager || managerWa) ? `<div class="modal-contact">
+            ${team.manager ? `<span class="modal-contact-line">${icon('users')} Pengurus: <strong>${esc(team.manager)}</strong></span>` : ''}
+            ${managerWa ? `<a class="btn btn-ghost btn-sm" href="${esc(managerWa)}" target="_blank" rel="noopener">${icon('whatsapp')} Chat pengurus</a>` : ''}
+          </div>` : ''}
         </div>
       </div>
     </div>
@@ -1835,7 +1833,7 @@ function renderPlayerModal(playerId) {
       <span class="player-big-number">${pad(player.number)}</span>
       ${avatar(player, 'xl')}
       <div class="player-modal-identity">
-        <span class="kicker">${esc(positionLabel(player.position))} · ${esc(team ? team.short : 'FA')}</span>
+        <span class="kicker">${esc(positionLabel(player.position))} · ${esc(team ? team.name : 'Free agent')}</span>
         <h2 id="modal-title">${esc(player.name)}</h2>
         <button type="button" class="team-link" data-action="open-team" data-id="${esc(team ? team.id : '')}">${team ? `${teamDot(team)}${esc(team.name)}` : 'Free agent'} ${icon('arrowUp')}</button>
         ${state.isAdmin ? `<div class="player-photo-actions">
@@ -2133,9 +2131,9 @@ function renderAdminMatch(match) {
   return `<article class="admin-match ${match.status === 'live' ? 'is-live' : ''}">
     <div class="admin-match-head">
       <div class="admin-match-title">
-        ${crest(home, 'sm')}<strong>${esc(home.short)}</strong>
+        ${crest(home, 'sm')}<strong>${esc(home.name)}</strong>
         <span class="admin-score-mini">${match.homeScore} : ${match.awayScore}</span>
-        <strong>${esc(away.short)}</strong>${crest(away, 'sm')}
+        <strong>${esc(away.name)}</strong>${crest(away, 'sm')}
       </div>
       <div class="admin-match-meta">${matchStatusPill(match)}<span>${esc(match.round)} · ${esc(formatKickoff(match.kickoff))}</span></div>
     </div>
@@ -2284,10 +2282,11 @@ function renderAdminCreateTeam() {
     <form data-form="admin-create-team" class="stack-form">
       <div class="form-grid">
         <label class="field field-span-2"><span>Nama tim</span><input name="name" placeholder="Contoh: Garuda Muda FC" minlength="2" maxlength="50" required autofocus></label>
-        <label class="field"><span>Kode singkat <em>(opsional)</em></span><input name="short" placeholder="GRM" maxlength="4"></label>
         <label class="field"><span>Kota</span><input name="city" value="Jakarta" maxlength="60" required></label>
-        <label class="field"><span>Pelatih <em>(opsional)</em></span><input name="coach" placeholder="Nama pelatih" maxlength="50"></label>
         <label class="field"><span>Tahun berdiri</span><input name="founded" type="number" min="1900" max="${new Date().getFullYear() + 1}" value="${new Date().getFullYear()}"></label>
+        <label class="field"><span>Pelatih <em>(opsional)</em></span><input name="coach" placeholder="Nama pelatih" maxlength="50"></label>
+        <label class="field"><span>Nama pengurus tim <em>(opsional)</em></span><input name="manager" placeholder="Nama admin tim" maxlength="50"></label>
+        <label class="field field-span-2"><span>No. HP / WhatsApp pengurus <em>(opsional)</em></span><input name="whatsapp" inputmode="tel" maxlength="20" placeholder="0812xxxxxxx"></label>
         <label class="field field-span-2"><span>Lapangan / home base <em>(opsional)</em></span><input name="venue" placeholder="Lapangan Cempaka" maxlength="80"></label>
         <label class="field color-field"><span>Warna utama</span><input name="color" type="color" value="#cfff45"></label>
         <label class="field color-field"><span>Warna gelap</span><input name="color2" type="color" value="#1b241b"></label>
@@ -2388,7 +2387,7 @@ function renderAdminArchive() {
     <div class="admin-archive-list">
       ${finished.slice(0, 8).map((match) => `<div class="admin-archive-row">
         <span>${esc(formatDate(match.kickoff))}</span>
-        <b>${esc(match.home.short)} ${match.homeScore}–${match.awayScore} ${esc(match.away.short)}</b>
+        <b>${esc(match.home.name)} ${match.homeScore}–${match.awayScore} ${esc(match.away.name)}</b>
         <small>${esc(match.round)}</small>
       </div>`).join('')}
     </div>
@@ -2676,6 +2675,13 @@ function renderAdminDashboard() {
     });
   const liveCount = state.data.matches.filter((match) => match.status === 'live').length;
   const tab = state.ui.adminTab || 'live';
+  const adminTabs = [
+    { id: 'live', label: 'Kontrol live', icon: 'live', badge: liveCount ? `${liveCount} live` : '' },
+    { id: 'tournament', label: 'Turnamen', icon: 'trophy' },
+    { id: 'teams', label: 'Tim & pemain', icon: 'teams' },
+    { id: 'contact', label: 'Kontak', icon: 'whatsapp' },
+    { id: 'data', label: 'Mabar & arsip', icon: 'mabar' }
+  ];
 
   return `<section class="wrap admin-page">
     <div class="admin-topbar">
@@ -2689,13 +2695,20 @@ function renderAdminDashboard() {
         <button type="button" class="btn btn-ghost btn-sm" data-action="admin-logout">${icon('logout')} Keluar</button>
       </div>
     </div>
-    <div class="admin-tabs">
-      <button type="button" class="admin-tab ${tab === 'live' ? 'is-active' : ''}" data-action="admin-tab" data-tab="live">${icon('live')} Kontrol live</button>
-      <button type="button" class="admin-tab ${tab === 'tournament' ? 'is-active' : ''}" data-action="admin-tab" data-tab="tournament">${icon('trophy')} Turnamen</button>
-      <button type="button" class="admin-tab ${tab === 'teams' ? 'is-active' : ''}" data-action="admin-tab" data-tab="teams">${icon('teams')} Tim & pemain</button>
-      <button type="button" class="admin-tab ${tab === 'data' ? 'is-active' : ''}" data-action="admin-tab" data-tab="data">${icon('mabar')} Mabar & arsip</button>
-    </div>
-    ${tab === 'live' ? `<div class="admin-layout">
+    <div class="admin-shell">
+      <aside class="admin-sidebar" aria-label="Menu operator">
+        <span class="admin-sidebar-kicker">Menu operator</span>
+        <nav class="admin-nav">
+          ${adminTabs.map((item) => `<button type="button" class="admin-tab ${tab === item.id ? 'is-active' : ''}" data-action="admin-tab" data-tab="${item.id}" ${tab === item.id ? 'aria-current="page"' : ''}>${icon(item.icon)}<span class="admin-tab-label">${item.label}</span>${item.badge ? `<b class="admin-tab-badge">${item.badge}</b>` : ''}</button>`).join('')}
+        </nav>
+        <div class="admin-sidebar-status">
+          <span class="admin-sidebar-kicker">Status siaran</span>
+          <span class="admin-server-state ${state.connected ? 'is-online' : ''}"><span class="online-dot"></span>${state.connected ? 'SSE tersambung' : 'Menyambungkan ulang...'}</span>
+          <p>${state.connected ? `${state.data.online} layar aktif menerima pembaruan` : 'Data tetap tersimpan di server.'}</p>
+        </div>
+      </aside>
+      <div class="admin-content">
+        ${tab === 'live' ? `<div class="admin-layout">
       <div class="admin-main">
         <div class="section-head compact admin-control-heading">
           <div><span class="kicker">Pertandingan aktif · ${matchFormatText()}</span><h2>Kontrol skor</h2></div>
@@ -2724,7 +2737,7 @@ function renderAdminDashboard() {
         ${renderAdminAddPlayer()}
         ${renderAdminTeamList()}
       </aside>
-    </div>` : `<div class="admin-layout">
+    </div>` : tab === 'contact' ? renderAdminContactTab() : `<div class="admin-layout">
       <div class="admin-main">
         ${renderAdminCreateMabar()}
       </div>
@@ -2733,7 +2746,52 @@ function renderAdminDashboard() {
         ${renderAdminArchive()}
       </aside>
     </div>`}
+      </div>
+    </div>
   </section>`;
+}
+
+function renderAdminContactTab() {
+  const meta = state.data.meta || {};
+  const teams = [...state.data.teams].sort((a, b) => a.name.localeCompare(b.name, 'id'));
+  return `<div class="admin-layout">
+    <div class="admin-main">
+      <div class="panel admin-form-panel">
+        <div class="panel-head"><div><span class="panel-kicker">Publik</span><h3>Kontak admin</h3></div>${icon('whatsapp')}</div>
+        <p class="inline-hint">Nomor WhatsApp ini dipakai tombol “Hubungi admin” di footer dan halaman mabar. Kosongkan untuk menyembunyikan tombolnya.</p>
+        <form data-form="admin-contact" class="stack-form">
+          <div class="form-grid">
+            <label class="field"><span>Nama admin</span><input name="name" value="${esc(meta.adminName || '')}" maxlength="50" placeholder="Admin Liga"></label>
+            <label class="field"><span>Nomor WhatsApp</span><input name="whatsapp" value="${esc(meta.adminWhatsapp || '')}" maxlength="20" inputmode="tel" placeholder="0812xxxxxxx"></label>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">${icon('check')} Simpan kontak admin</button>
+        </form>
+      </div>
+      <div class="panel admin-form-panel">
+        <div class="panel-head"><div><span class="panel-kicker">Tim</span><h3>Kontak pengurus tim</h3></div>${icon('teams')}</div>
+        <p class="inline-hint">Tampil di profil tim publik sebagai tombol “Chat pengurus”. Nomor boleh diawali 08 atau 62. Nomor juga bisa diisi langsung saat membuat tim baru.</p>
+        <form data-form="admin-team-contact" class="stack-form">
+          <label class="field"><span>Pilih tim</span>
+            <select name="teamId" id="team-contact-team">
+              ${teams.map((team) => `<option value="${esc(team.id)}" data-manager="${esc(team.manager || '')}" data-whatsapp="${esc(team.managerWhatsapp || '')}">${esc(team.name)}${team.manager ? ` · ${esc(team.manager)}` : ''}</option>`).join('')}
+            </select>
+          </label>
+          <div class="form-grid">
+            <label class="field"><span>Nama pengurus</span><input name="manager" maxlength="50" placeholder="Nama pengurus / manajer"></label>
+            <label class="field"><span>WhatsApp pengurus</span><input name="whatsapp" maxlength="20" inputmode="tel" placeholder="0812xxxxxxx"></label>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">${icon('check')} Simpan kontak pengurus</button>
+        </form>
+      </div>
+    </div>
+    <aside class="admin-side">
+      <div class="panel admin-note-panel">
+        <span class="summary-icon">${icon('whatsapp')}</span>
+        <h3>Langsung ke WhatsApp</h3>
+        <p>Tombol publik membuka wa.me dengan pesan otomatis. Pengunjung tinggal menekan kirim di WhatsApp.</p>
+      </div>
+    </aside>
+  </div>`;
 }
 
 function renderAdminPage() {
@@ -3645,6 +3703,45 @@ async function handleForm(form) {
     return;
   }
 
+  if (name === 'admin-contact') {
+    busy(submit, true);
+    try {
+      await api('/api/admin/contact', {
+        method: 'PATCH',
+        body: { name: values.name, whatsapp: values.whatsapp }
+      });
+      await refreshState();
+      toast('Kontak admin disimpan.');
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      busy(submit, false);
+    }
+    return;
+  }
+
+  if (name === 'admin-team-contact') {
+    const team = getTeam(String(values.teamId || ''));
+    if (!team) {
+      toast('Pilih tim terlebih dahulu.', 'error');
+      return;
+    }
+    busy(submit, true);
+    try {
+      await api(`/api/admin/teams/${encodeURIComponent(team.id)}/contact`, {
+        method: 'PATCH',
+        body: { manager: values.manager, whatsapp: values.whatsapp }
+      });
+      await refreshState();
+      toast(`Kontak pengurus ${team.name} disimpan.`);
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      busy(submit, false);
+    }
+    return;
+  }
+
   if (name === 'admin-create-team') {
     const rosterRows = [...form.querySelectorAll('.roster-input-row')];
     const players = rosterRows.map((row) => ({
@@ -3663,9 +3760,10 @@ async function handleForm(form) {
         method: 'POST',
         body: {
           name: values.name,
-          short: values.short,
           city: values.city,
           coach: values.coach,
+          manager: values.manager,
+          whatsapp: values.whatsapp,
           founded: Number(values.founded) || undefined,
           venue: values.venue,
           color: values.color,
@@ -3822,6 +3920,16 @@ document.addEventListener('change', (event) => {
   }
   if (event.target.classList.contains('roster-photo-input')) {
     handleRosterPhotoInput(event.target).catch((error) => toast(error.message, 'error'));
+  }
+  if (event.target.id === 'team-contact-team') {
+    const option = event.target.selectedOptions[0];
+    const form = event.target.closest('form');
+    if (option && form) {
+      const manager = form.querySelector('input[name="manager"]');
+      const whatsapp = form.querySelector('input[name="whatsapp"]');
+      if (manager) manager.value = option.dataset.manager || '';
+      if (whatsapp) whatsapp.value = option.dataset.whatsapp || '';
+    }
   }
   if (event.target.matches('[data-group-match-group]')) {
     refreshGroupMatchTeams(event.target);

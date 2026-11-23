@@ -42,6 +42,7 @@ function loadDb() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(DB_FILE)) {
     const seed = createSeed();
+    seed.meta = { adminName: 'Admin Liga', adminWhatsapp: '', ...(seed.meta || {}) };
     fs.writeFileSync(DB_FILE, JSON.stringify(seed, null, 2));
     return seed;
   }
@@ -63,6 +64,22 @@ function loadDb() {
     if (!Array.isArray(data.tournamentHistory)) {
       data.tournamentHistory = [];
       changed = true;
+    }
+    if (!data.meta || typeof data.meta !== 'object') {
+      data.meta = {};
+      changed = true;
+    }
+    if (typeof data.meta.adminName !== 'string') {
+      data.meta.adminName = 'Admin Liga';
+      changed = true;
+    }
+    if (typeof data.meta.adminWhatsapp !== 'string') {
+      data.meta.adminWhatsapp = '';
+      changed = true;
+    }
+    for (const team of data.teams || []) {
+      if (typeof team.manager !== 'string') { team.manager = ''; changed = true; }
+      if (typeof team.managerWhatsapp !== 'string') { team.managerWhatsapp = ''; changed = true; }
     }
     if (changed) fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
     return data;
@@ -95,6 +112,14 @@ function text(value, max = 120) {
 function number(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeWhatsapp(value) {
+  let digits = String(value == null ? '' : value).replace(/\D/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0')) digits = `62${digits.slice(1)}`;
+  else if (digits.startsWith('8')) digits = `62${digits}`;
+  return digits.length >= 8 && digits.length <= 15 ? digits : '';
 }
 
 function slugify(value) {
@@ -1486,6 +1511,10 @@ async function handleApi(req, res, url) {
       throw new HttpError(409, 'Nama tim sudah dipakai.');
     }
     const currentYear = new Date().getFullYear();
+    const manager = text(body.manager, 50);
+    const rawManagerWhatsapp = text(body.whatsapp, 30);
+    const managerWhatsapp = normalizeWhatsapp(rawManagerWhatsapp);
+    if (rawManagerWhatsapp && !managerWhatsapp) throw new HttpError(400, 'Nomor WhatsApp pengurus tidak valid.');
     const color = /^#[0-9a-fA-F]{6}$/.test(String(body.color || '')) ? String(body.color) : '#cfff45';
     const color2 = /^#[0-9a-fA-F]{6}$/.test(String(body.color2 || '')) ? String(body.color2) : '#1b241b';
     const rawPlayers = Array.isArray(body.players) ? body.players : [];
@@ -1554,6 +1583,8 @@ async function handleApi(req, res, url) {
       coach: text(body.coach, 50) || 'Belum diisi',
       founded: clamp(Math.floor(number(body.founded, currentYear)), 1900, currentYear + 1),
       venue: text(body.venue, 80) || 'Lapangan Mini Soccer',
+      manager,
+      managerWhatsapp,
       logo
     };
     db.teams.push(team);
@@ -1562,6 +1593,37 @@ async function handleApi(req, res, url) {
     persist();
     broadcast();
     sendJson(res, 201, { ok: true, team, players });
+    return;
+  }
+
+  const teamContactMatch = pathname.match(/^\/api\/admin\/teams\/([^/]+)\/contact$/);
+  if (method === 'PATCH' && teamContactMatch) {
+    const team = teamMap.get(decodeURIComponent(teamContactMatch[1]));
+    if (!team) throw new HttpError(404, 'Tim tidak ditemukan.');
+    const body = await readJson(req);
+    const manager = text(body.manager, 50);
+    const rawWhatsapp = text(body.whatsapp, 30);
+    const managerWhatsapp = normalizeWhatsapp(rawWhatsapp);
+    if (rawWhatsapp && !managerWhatsapp) throw new HttpError(400, 'Nomor WhatsApp pengurus tidak valid.');
+    team.manager = manager;
+    team.managerWhatsapp = managerWhatsapp;
+    persist();
+    broadcast();
+    sendJson(res, 200, { ok: true, team });
+    return;
+  }
+
+  if (method === 'PATCH' && pathname === '/api/admin/contact') {
+    const body = await readJson(req);
+    const adminName = text(body.name, 50) || 'Admin Liga';
+    const rawWhatsapp = text(body.whatsapp, 30);
+    const adminWhatsapp = normalizeWhatsapp(rawWhatsapp);
+    if (rawWhatsapp && !adminWhatsapp) throw new HttpError(400, 'Nomor WhatsApp admin tidak valid.');
+    db.meta.adminName = adminName;
+    db.meta.adminWhatsapp = adminWhatsapp;
+    persist();
+    broadcast();
+    sendJson(res, 200, { ok: true, adminName, adminWhatsapp });
     return;
   }
 
