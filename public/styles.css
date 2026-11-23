@@ -1743,8 +1743,6 @@ table { border-collapse: collapse; }
 .footer-label { color: var(--muted-2); font-size: 8px; text-transform: uppercase; letter-spacing: .14em; font-weight: 700; margin-bottom: 2px; }
 .footer-links a { color: var(--muted); font-size: 10.5px; transition: color .2s; }
 .footer-links a:hover { color: var(--accent); }
-.footer-wa { display: inline-flex; align-items: center; gap: 6px; }
-.footer-wa .icon { width: 13px; height: 13px; }
 .footer-bottom { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 16px 0 19px; border-top: 1px solid var(--line); color: var(--muted-2); font-size: 8.5px; }
 .live-tech { display: inline-flex; align-items: center; gap: 5px; }
 .live-tech .icon { width: 11px; height: 11px; color: var(--accent); }

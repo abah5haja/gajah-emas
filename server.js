@@ -42,7 +42,6 @@ function loadDb() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
   if (!fs.existsSync(DB_FILE)) {
     const seed = createSeed();
-    seed.meta = { adminName: 'Admin Liga', adminWhatsapp: '', ...(seed.meta || {}) };
     fs.writeFileSync(DB_FILE, JSON.stringify(seed, null, 2));
     return seed;
   }
@@ -69,14 +68,8 @@ function loadDb() {
       data.meta = {};
       changed = true;
     }
-    if (typeof data.meta.adminName !== 'string') {
-      data.meta.adminName = 'Admin Liga';
-      changed = true;
-    }
-    if (typeof data.meta.adminWhatsapp !== 'string') {
-      data.meta.adminWhatsapp = '';
-      changed = true;
-    }
+    if ('adminName' in data.meta) { delete data.meta.adminName; changed = true; }
+    if ('adminWhatsapp' in data.meta) { delete data.meta.adminWhatsapp; changed = true; }
     for (const team of data.teams || []) {
       if ('manager' in team) { delete team.manager; changed = true; }
       if (typeof team.managerWhatsapp !== 'string') { team.managerWhatsapp = ''; changed = true; }
@@ -1591,35 +1584,6 @@ async function handleApi(req, res, url) {
     persist();
     broadcast();
     sendJson(res, 201, { ok: true, team, players });
-    return;
-  }
-
-  const teamContactMatch = pathname.match(/^\/api\/admin\/teams\/([^/]+)\/contact$/);
-  if (method === 'PATCH' && teamContactMatch) {
-    const team = teamMap.get(decodeURIComponent(teamContactMatch[1]));
-    if (!team) throw new HttpError(404, 'Tim tidak ditemukan.');
-    const body = await readJson(req);
-    const rawWhatsapp = text(body.whatsapp, 30);
-    const managerWhatsapp = normalizeWhatsapp(rawWhatsapp);
-    if (rawWhatsapp && !managerWhatsapp) throw new HttpError(400, 'Nomor WhatsApp pengurus tidak valid.');
-    team.managerWhatsapp = managerWhatsapp;
-    persist();
-    broadcast();
-    sendJson(res, 200, { ok: true, team });
-    return;
-  }
-
-  if (method === 'PATCH' && pathname === '/api/admin/contact') {
-    const body = await readJson(req);
-    const adminName = text(body.name, 50) || 'Admin Liga';
-    const rawWhatsapp = text(body.whatsapp, 30);
-    const adminWhatsapp = normalizeWhatsapp(rawWhatsapp);
-    if (rawWhatsapp && !adminWhatsapp) throw new HttpError(400, 'Nomor WhatsApp admin tidak valid.');
-    db.meta.adminName = adminName;
-    db.meta.adminWhatsapp = adminWhatsapp;
-    persist();
-    broadcast();
-    sendJson(res, 200, { ok: true, adminName, adminWhatsapp });
     return;
   }
 

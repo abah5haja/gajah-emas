@@ -71,11 +71,6 @@ function waDisplay(number) {
   return digits;
 }
 
-function adminWhatsappHref(message) {
-  const meta = state.data && state.data.meta ? state.data.meta : {};
-  return waHref(meta.adminWhatsapp, message || `Halo ${meta.adminName || 'Admin'}, saya mau tanya tentang liga mini soccer.`);
-}
-
 function num(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -420,7 +415,6 @@ function renderMobileNav() {
 
 function renderFooter() {
   if (!state.data) return;
-  const adminWa = adminWhatsappHref();
   root.footer.innerHTML = `
     <div class="wrap footer-inner">
       <div class="footer-brand">
@@ -442,7 +436,6 @@ function renderFooter() {
           <span class="footer-label">Komunitas</span>
           <a href="/mabar" data-link>Mabar</a>
           <a href="/admin" data-link>Operator</a>
-          ${adminWa ? `<a href="${esc(adminWa)}" target="_blank" rel="noopener" class="footer-wa">${icon('whatsapp')} Hubungi admin</a>` : ''}
         </div>
       </div>
     </div>
@@ -1648,7 +1641,6 @@ function renderMabarPage() {
   const open = sessions.filter((session) => !sessionIsPast(session));
   const totalPlayers = sessions.reduce((total, session) => total + session.participants.length, 0);
   const openSlots = open.reduce((total, session) => total + Math.max(0, session.slots - session.participants.length), 0);
-  const adminWa = adminWhatsappHref(`Halo ${state.data.meta.adminName || 'Admin'}, saya mau tanya soal mabar di ${state.data.meta.season || 'liga mini soccer'}.`);
   return `${pageHead({
     eyebrow: 'Komunitas',
     title: `Kurang orang?<br><span class="accent-text">Mabar saja.</span>`,
@@ -1672,7 +1664,6 @@ function renderMabarPage() {
       <div><span class="kicker">Punya lapangan dan waktu?</span><h2>Bikin sesi, ajak yang lain.</h2><p>Isi detail singkat, tentukan jumlah slot, lalu bagikan halaman ini ke grup.</p></div>
       <div class="mabar-cta-actions">
         <button type="button" class="btn btn-primary" data-action="create-mabar">${icon('plus')} Buat mabar baru</button>
-        ${adminWa ? `<a class="btn btn-ghost" href="${esc(adminWa)}" target="_blank" rel="noopener">${icon('whatsapp')} Hub admin</a>` : ''}
       </div>
     </div>
   </section>`;
@@ -2684,7 +2675,6 @@ function renderAdminDashboard() {
     { id: 'live', label: 'Kontrol live', icon: 'live', badge: liveCount ? `${liveCount} live` : '' },
     { id: 'tournament', label: 'Turnamen', icon: 'trophy' },
     { id: 'teams', label: 'Tim & pemain', icon: 'teams' },
-    { id: 'contact', label: 'Kontak', icon: 'whatsapp' },
     { id: 'data', label: 'Mabar & arsip', icon: 'mabar' }
   ];
 
@@ -2742,7 +2732,7 @@ function renderAdminDashboard() {
         ${renderAdminAddPlayer()}
         ${renderAdminTeamList()}
       </aside>
-    </div>` : tab === 'contact' ? renderAdminContactTab() : `<div class="admin-layout">
+    </div>` : `<div class="admin-layout">
       <div class="admin-main">
         ${renderAdminCreateMabar()}
       </div>
@@ -2754,46 +2744,6 @@ function renderAdminDashboard() {
       </div>
     </div>
   </section>`;
-}
-
-function renderAdminContactTab() {
-  const meta = state.data.meta || {};
-  const teams = [...state.data.teams].sort((a, b) => a.name.localeCompare(b.name, 'id'));
-  return `<div class="admin-layout">
-    <div class="admin-main">
-      <div class="panel admin-form-panel">
-        <div class="panel-head"><div><span class="panel-kicker">Publik</span><h3>Kontak admin</h3></div>${icon('whatsapp')}</div>
-        <p class="inline-hint">Nomor WhatsApp ini dipakai tombol “Hubungi admin” di footer dan halaman mabar. Kosongkan untuk menyembunyikan tombolnya.</p>
-        <form data-form="admin-contact" class="stack-form">
-          <div class="form-grid">
-            <label class="field"><span>Nama admin</span><input name="name" value="${esc(meta.adminName || '')}" maxlength="50" placeholder="Admin Liga"></label>
-            <label class="field"><span>Nomor WhatsApp</span><input name="whatsapp" value="${esc(meta.adminWhatsapp || '')}" maxlength="20" inputmode="tel" placeholder="0812xxxxxxx"></label>
-          </div>
-          <button type="submit" class="btn btn-primary btn-block">${icon('check')} Simpan kontak admin</button>
-        </form>
-      </div>
-      <div class="panel admin-form-panel">
-        <div class="panel-head"><div><span class="panel-kicker">Tim</span><h3>Kontak pengurus tim</h3></div>${icon('teams')}</div>
-        <p class="inline-hint">Nomor tampil di profil tim publik dan bisa diklik untuk langsung WhatsApp pengurus. Nomor boleh diawali 08 atau 62, dan juga bisa diisi saat membuat tim baru.</p>
-        <form data-form="admin-team-contact" class="stack-form">
-          <label class="field"><span>Pilih tim</span>
-            <select name="teamId" id="team-contact-team">
-              ${teams.map((team) => `<option value="${esc(team.id)}" data-whatsapp="${esc(team.managerWhatsapp || '')}">${esc(team.name)}</option>`).join('')}
-            </select>
-          </label>
-          <label class="field"><span>WhatsApp pengurus</span><input name="whatsapp" maxlength="20" inputmode="tel" placeholder="0812xxxxxxx"></label>
-          <button type="submit" class="btn btn-primary btn-block">${icon('check')} Simpan kontak pengurus</button>
-        </form>
-      </div>
-    </div>
-    <aside class="admin-side">
-      <div class="panel admin-note-panel">
-        <span class="summary-icon">${icon('whatsapp')}</span>
-        <h3>Langsung ke WhatsApp</h3>
-        <p>Tombol publik membuka wa.me dengan pesan otomatis. Pengunjung tinggal menekan kirim di WhatsApp.</p>
-      </div>
-    </aside>
-  </div>`;
 }
 
 function renderAdminPage() {
@@ -3705,45 +3655,6 @@ async function handleForm(form) {
     return;
   }
 
-  if (name === 'admin-contact') {
-    busy(submit, true);
-    try {
-      await api('/api/admin/contact', {
-        method: 'PATCH',
-        body: { name: values.name, whatsapp: values.whatsapp }
-      });
-      await refreshState();
-      toast('Kontak admin disimpan.');
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      busy(submit, false);
-    }
-    return;
-  }
-
-  if (name === 'admin-team-contact') {
-    const team = getTeam(String(values.teamId || ''));
-    if (!team) {
-      toast('Pilih tim terlebih dahulu.', 'error');
-      return;
-    }
-    busy(submit, true);
-    try {
-      await api(`/api/admin/teams/${encodeURIComponent(team.id)}/contact`, {
-        method: 'PATCH',
-        body: { whatsapp: values.whatsapp }
-      });
-      await refreshState();
-      toast(`Kontak pengurus ${team.name} disimpan.`);
-    } catch (error) {
-      toast(error.message, 'error');
-    } finally {
-      busy(submit, false);
-    }
-    return;
-  }
-
   if (name === 'admin-create-team') {
     const rosterRows = [...form.querySelectorAll('.roster-input-row')];
     const players = rosterRows.map((row) => ({
@@ -3921,14 +3832,6 @@ document.addEventListener('change', (event) => {
   }
   if (event.target.classList.contains('roster-photo-input')) {
     handleRosterPhotoInput(event.target).catch((error) => toast(error.message, 'error'));
-  }
-  if (event.target.id === 'team-contact-team') {
-    const option = event.target.selectedOptions[0];
-    const form = event.target.closest('form');
-    if (option && form) {
-      const whatsapp = form.querySelector('input[name="whatsapp"]');
-      if (whatsapp) whatsapp.value = option.dataset.whatsapp || '';
-    }
   }
   if (event.target.matches('[data-group-match-group]')) {
     refreshGroupMatchTeams(event.target);

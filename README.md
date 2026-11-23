@@ -29,7 +29,7 @@ Tidak ada proses build. Semua aset ada di `public/`, data tersimpan di `data/db.
 - **Laporan PDF tim** — tombol **Unduh PDF** di profil tim menghasilkan laporan berisi profil klub, posisi liga, selisih gol, roster, gol, assist, kartu kuning, dan kartu merah.
 - **Pemain** — direktori dengan pencarian, filter tim, sorting (termasuk kartu), serta profil dan statistik individual. Foto pemain bisa diunggah saat menambah pemain atau langsung dari profil.
 - **Mabar** — daftar sesi terbuka, join/leave tanpa akun, pembuatan sesi oleh pengunjung, progres slot, dan peserta.
-- **Kontak WhatsApp** — admin mengisi kontak admin dan nomor WhatsApp pengurus tiap tim di tab **Kontak**. Pengunjung bisa menekan **Hubungi admin** di footer atau **Hub admin** di halaman mabar, serta **Chat pengurus** di profil tim; tautan langsung membuka WhatsApp dengan pesan otomatis.
+- **WhatsApp pengurus** — nomor WhatsApp pengurus diisi saat membuat tim baru. Nomor tampil di profil tim publik dalam format `08…` dan bisa diklik (juga tombol **Chat pengurus**); tautan langsung membuka WhatsApp dengan pesan otomatis.
 - **Tema gelap/terang** — tombol di header, tersimpan di browser, dan langsung berlaku di semua halaman.
 - **Operator** — login PIN, kontrol skor, pencatatan kejadian, pengaturan turnamen, pembagian grup, pembuatan jadwal, serta manajemen tim/pemain/mabar.
 
@@ -41,10 +41,9 @@ Tidak ada proses build. Semua aset ada di `public/`, data tersimpan di `data/db.
 4. Tab **Tim & pemain** untuk menginput tim baru, logo, nomor WhatsApp pengurus, serta nama dan foto pemain di **Skuad awal**. Tambah pemain berikutnya lewat panel **Tambah pemain ke skuad**.
 5. Di profil pemain, operator juga bisa **Upload foto**, **Ganti foto**, atau **Hapus foto**.
 6. Tab **Turnamen** menampilkan urutan **Pengaturan turnamen → Pembagian grup → Jadwal fase grup → Fase gugur**. Isi semua slot grup, lalu buat jadwal round-robin atau tambah laga grup satu per satu lewat **Laga manual** (nama tim lengkap dan jam sendiri).
-7. Tab **Kontak** untuk mengisi nomor WhatsApp admin (tombol **Hubungi admin** di publik) dan nomor WhatsApp pengurus tiap tim (tampil dan bisa diklik di profil tim).
-8. Setelah semua laga grup selesai, pilih **Isi otomatis** untuk bracket dari klasemen atau **Isi manual** untuk mengisi tim dan jam 8 besar hingga final. Pemenang dicatat lewat Kontrol live.
-9. Setelah final dan perebutan juara 3 selesai, klik **Tutup & selesaikan turnamen**. Panel **Buat turnamen baru** akan muncul; event lama otomatis masuk **Riwayat turnamen**.
-10. Semua penonton menerima pembaruan tanpa refresh.
+7. Setelah semua laga grup selesai, pilih **Isi otomatis** untuk bracket dari klasemen atau **Isi manual** untuk mengisi tim dan jam 8 besar hingga final. Pemenang dicatat lewat Kontrol live.
+8. Setelah final dan perebutan juara 3 selesai, klik **Tutup & selesaikan turnamen**. Panel **Buat turnamen baru** akan muncul; event lama otomatis masuk **Riwayat turnamen**.
+9. Semua penonton menerima pembaruan tanpa refresh.
 
 Logo tim dan foto pemain menerima PNG, JPG, atau WebP. Browser mengecilkan gambar menjadi maksimal 512px sebelum dikirim, lalu server menyimpannya di `public/uploads/`.
 
