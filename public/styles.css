@@ -1575,7 +1575,7 @@ table { border-collapse: collapse; }
   display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0;
   border: 0; padding: 2px 0; background: transparent; color: inherit; text-align: left; cursor: pointer;
 }
-.admin-team-actions { display: flex; gap: 3px; opacity: .4; transition: opacity .16s; }
+.admin-team-actions { display: flex; gap: 3px; opacity: .8; transition: opacity .16s; }
 .admin-team-row:hover .admin-team-actions,
 .admin-team-actions:focus-within { opacity: 1; }
 .admin-team-actions .icon-button { width: 24px; height: 24px; }
